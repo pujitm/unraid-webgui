@@ -7,6 +7,8 @@ defmodule UnraidViewWeb.CpuUsageLive do
   use Phoenix.LiveView
 
   @refresh_interval 1_000
+  @max_history 300
+  @default_window 60
 
   # Public API --------------------------------------------------------------
 
@@ -15,19 +17,37 @@ defmodule UnraidViewWeb.CpuUsageLive do
     if connected?(socket), do: :timer.send_interval(@refresh_interval, :refresh)
 
     cores = per_core_usage()
+    util = average_util(cores)
+
     {:ok,
      socket
      |> assign(:cpu_per_core, cores)
-     |> assign(:cpu_util, average_util(cores))}
+     |> assign(:cpu_util, util)
+     |> assign(:history, [util])
+     |> assign(:window, @default_window)}
   end
 
   @impl true
   def handle_info(:refresh, socket) do
     cores = per_core_usage()
+    util = average_util(cores)
+
+    history =
+      (socket.assigns.history ++ [util])
+      |> Enum.take(@max_history)
+
     {:noreply,
      socket
      |> assign(:cpu_per_core, cores)
-     |> assign(:cpu_util, average_util(cores))}
+     |> assign(:cpu_util, util)
+     |> assign(:history, history)
+     |> push_event("cpu_usage_tick", %{value: util})}
+  end
+
+  @impl true
+  def handle_event("set_window", %{"window" => window_str}, socket) do
+    window = String.to_integer(window_str)
+    {:noreply, socket |> assign(:window, window) |> push_event("window_change", %{window: window})}
   end
 
   @impl true
@@ -36,7 +56,25 @@ defmodule UnraidViewWeb.CpuUsageLive do
     <div class="card bg-base-100 shadow-xl card-border border-primary">
       <div class="card-body">
         <h2 class="card-title text-sm">CPU Usage</h2>
-        <div class="flex items-center gap-4">
+
+        <div class="flex items-center gap-2 mb-2">
+          <form phx-change="set_window" class="flex items-center gap-2">
+            <label class="text-xs" for="window-select">Window:</label>
+            <select id="window-select" name="window" class="select select-xs">
+              <option value="10" selected={@window == 10}>10s</option>
+              <option value="30" selected={@window == 30}>30s</option>
+              <option value="60" selected={@window == 60}>1m</option>
+              <option value="120" selected={@window == 120}>2m</option>
+              <option value="300" selected={@window == 300}>5m</option>
+            </select>
+          </form>
+        </div>
+
+        <div id="cpu-chart-container" class="w-full h-32" phx-hook="CpuChart" phx-update="ignore" data-history={Jason.encode!(@history)} data-window={@window}>
+          <canvas id="cpu-chart" class="w-full h-full"></canvas>
+        </div>
+
+        <div class="flex items-center gap-4 mt-4">
           <div class="flex-1">
             <div class="w-full bg-base-300 rounded-full h-3">
               <div
