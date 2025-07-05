@@ -53,8 +53,9 @@ defmodule UnraidViewWeb.CpuUsageLive do
   end
 
   @impl true
-  def handle_event("toggle_chart", _params, socket) do
-    {:noreply, assign(socket, :show_chart, !socket.assigns.show_chart)}
+  def handle_event("set_show_chart", %{"show" => show}, socket) do
+    show_bool = if is_boolean(show), do: show, else: show == "true"
+    {:noreply, assign(socket, :show_chart, show_bool)}
   end
 
   @impl true
@@ -63,7 +64,7 @@ defmodule UnraidViewWeb.CpuUsageLive do
     <div class="card bg-base-100 shadow-xl card-border border-primary">
       <div class="card-body">
         <h2 class="card-title text-sm">CPU Usage</h2>
-        <button phx-click="toggle_chart" class="btn btn-xs ml-auto">
+        <button id="btn-toggle-chart" class="btn btn-xs ml-auto" phx-hook="ChartToggle" data-container-id="cpu-chart-container" data-initial-show={@show_chart}>
           <%= if @show_chart, do: "Hide Chart", else: "Show Chart" %>
         </button>
 
@@ -80,11 +81,9 @@ defmodule UnraidViewWeb.CpuUsageLive do
           </form>
         </div>
 
-        <%= if @show_chart do %>
-          <div id="cpu-chart-container" class="w-full h-32" phx-hook="CpuChart" phx-update="ignore" data-history={Jason.encode!(@history)} data-window={@window} data-max-history={@max_history}>
-            <canvas id="cpu-chart" class="w-full h-full"></canvas>
-          </div>
-        <% end %>
+        <div id="cpu-chart-container" class="w-full h-32" phx-hook="CpuChart" phx-update="ignore" data-history={Jason.encode!(@history)} data-window={@window} data-max-history={@max_history} style={"display: #{if @show_chart, do: "block", else: "none"};"}>
+          <canvas id="cpu-chart" class="w-full h-full"></canvas>
+        </div>
 
         <div class="flex items-center gap-4 mt-4">
           <div class="flex-1">

@@ -24,9 +24,10 @@ import {Socket} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
 import topbar from "../vendor/topbar"
 import CpuChartHook from "./cpu_chart_hook"
+import ChartToggleHook from "./chart_toggle_hook"
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
-const Hooks = { CpuChart: CpuChartHook }
+const Hooks = { CpuChart: CpuChartHook, ChartToggle: ChartToggleHook }
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
