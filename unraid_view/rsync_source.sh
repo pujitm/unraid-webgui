@@ -27,6 +27,7 @@ rsync -avz --delete \
   --exclude='*.tmp' \
   --exclude='*.DS_Store' \
   --exclude='node_modules' \
+  --exclude='priv/static/assets' \
   "$SRC_DIR/" "$REMOTE:$DEST_DIR/"
 
 echo "Source sync to $UNRAID_SERVER:$DEST_DIR complete." 
