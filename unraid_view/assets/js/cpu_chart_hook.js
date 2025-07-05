@@ -27,7 +27,10 @@ export default {
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        animation: false,
+        animation: {
+          duration: 1000,
+          easing: "linear",
+        },
         scales: {
           y: {
             min: 0,
@@ -76,6 +79,6 @@ export default {
     const viewData = this.dataPoints.slice(-this.windowSize)
     this.chart.data.labels = viewData.map(() => "")
     this.chart.data.datasets[0].data = viewData
-    this.chart.update("none")
+    this.chart.update()
   },
 } 
