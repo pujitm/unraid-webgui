@@ -12,7 +12,7 @@ config :unraid_view,
 
 # Configures the endpoint
 config :unraid_view, UnraidViewWeb.Endpoint,
-  url: [host: "localhost", path: "/new"],
+  url: [host: "localhost"],
   adapter: Bandit.PhoenixAdapter,
   render_errors: [
     formats: [html: UnraidViewWeb.ErrorHTML, json: UnraidViewWeb.ErrorJSON],
