@@ -24,7 +24,8 @@ defmodule UnraidViewWeb.CpuUsageLive do
      |> assign(:cpu_per_core, cores)
      |> assign(:cpu_util, util)
      |> assign(:history, [util])
-     |> assign(:window, @default_window)}
+     |> assign(:window, @default_window)
+     |> assign(:max_history, @max_history)}
   end
 
   @impl true
@@ -70,7 +71,7 @@ defmodule UnraidViewWeb.CpuUsageLive do
           </form>
         </div>
 
-        <div id="cpu-chart-container" class="w-full h-32" phx-hook="CpuChart" phx-update="ignore" data-history={Jason.encode!(@history)} data-window={@window}>
+        <div id="cpu-chart-container" class="w-full h-32" phx-hook="CpuChart" phx-update="ignore" data-history={Jason.encode!(@history)} data-window={@window} data-max-history={@max_history}>
           <canvas id="cpu-chart" class="w-full h-full"></canvas>
         </div>
 

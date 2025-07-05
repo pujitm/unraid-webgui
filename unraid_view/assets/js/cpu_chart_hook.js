@@ -1,6 +1,7 @@
 export default {
   mounted() {
     this.windowSize = parseInt(this.el.dataset.window) || 60
+    this.maxHistory = parseInt(this.el.dataset.maxHistory) || 300
     this.dataPoints = JSON.parse(this.el.dataset.history) || []
 
     // Prepare labels (simple empty labels per point)
@@ -53,28 +54,28 @@ export default {
 
     this.handleEvent("window_change", ({ window }) => {
       this.windowSize = window
-      this.trimData()
       this.updateChart()
     })
   },
 
   appendPoint(value) {
     this.dataPoints.push(value)
-    if (this.dataPoints.length > this.windowSize) {
+    if (this.dataPoints.length > this.maxHistory) {
       this.dataPoints.shift()
     }
     this.updateChart()
   },
 
   trimData() {
-    if (this.dataPoints.length > this.windowSize) {
-      this.dataPoints = this.dataPoints.slice(this.dataPoints.length - this.windowSize)
+    if (this.dataPoints.length > this.maxHistory) {
+      this.dataPoints = this.dataPoints.slice(-this.maxHistory)
     }
   },
 
   updateChart() {
-    this.chart.data.labels = this.dataPoints.map(() => "")
-    this.chart.data.datasets[0].data = this.dataPoints
+    const viewData = this.dataPoints.slice(-this.windowSize)
+    this.chart.data.labels = viewData.map(() => "")
+    this.chart.data.datasets[0].data = viewData
     this.chart.update("none")
   },
 } 
