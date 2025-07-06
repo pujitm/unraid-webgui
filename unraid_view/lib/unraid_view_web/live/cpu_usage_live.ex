@@ -35,7 +35,7 @@ defmodule UnraidViewWeb.CpuUsageLive do
     util = average_util(cores)
 
     history =
-      (socket.assigns.history ++ [util])
+      [util | socket.assigns.history]
       |> Enum.take(@max_history)
 
     {:noreply,
@@ -49,7 +49,9 @@ defmodule UnraidViewWeb.CpuUsageLive do
   @impl true
   def handle_event("set_window", %{"window" => window_str}, socket) do
     window = String.to_integer(window_str)
-    {:noreply, socket |> assign(:window, window) |> push_event("window_change", %{window: window})}
+
+    {:noreply,
+     socket |> assign(:window, window) |> push_event("window_change", %{window: window})}
   end
 
   @impl true
@@ -81,7 +83,7 @@ defmodule UnraidViewWeb.CpuUsageLive do
           </form>
         </div>
 
-        <div id="cpu-chart-container" class="w-full h-32" phx-hook="CpuChart" phx-update="ignore" data-history={Jason.encode!(@history)} data-window={@window} data-max-history={@max_history} style={"display: #{if @show_chart, do: "block", else: "none"};"}>
+        <div id="cpu-chart-container" class="w-full h-32" phx-hook="CpuChart" phx-update="ignore" data-history={Jason.encode!(Enum.reverse(@history))} data-window={@window} data-max-history={@max_history} style={"display: #{if @show_chart, do: "block", else: "none"};"}>
           <canvas id="cpu-chart" class="w-full h-full"></canvas>
         </div>
 
@@ -132,14 +134,19 @@ defmodule UnraidViewWeb.CpuUsageLive do
     case :cpu_sup.util([:per_cpu]) do
       list when is_list(list) ->
         Enum.map(list, fn
-          {_, busy, _nonbusy, _misc} when is_number(busy) -> busy
+          {_, busy, _nonbusy, _misc} when is_number(busy) ->
+            busy
+
           {_, busy_states, _nonbusy, _misc} when is_list(busy_states) ->
             # Sum busy states if detailed option is returned unexpectedly
             Enum.reduce(busy_states, 0.0, fn {_, val}, acc -> acc + val end)
-          _ -> 0.0
+
+          _ ->
+            0.0
         end)
 
-      _ -> []
+      _ ->
+        []
     end
   end
 
