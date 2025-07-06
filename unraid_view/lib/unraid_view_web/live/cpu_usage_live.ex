@@ -55,7 +55,12 @@ defmodule UnraidViewWeb.CpuUsageLive do
 
   @impl true
   def handle_info({:set_show_chart, show?}, socket) when is_boolean(show?) do
-    {:noreply, assign(socket, :show_chart, show?)}
+    require Logger
+    Logger.info("CpuUsageLive received :set_show_chart #{inspect(show?)}")
+    {:noreply,
+     socket
+     |> assign(:show_chart, show?)
+     |> push_event("chart_toggle", %{show: show?})}
   end
 
   @impl true
