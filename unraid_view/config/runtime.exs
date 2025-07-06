@@ -33,8 +33,29 @@ if config_env() == :prod do
       You can generate one by calling: mix phx.gen.secret
       """
 
-  host = System.get_env("PHX_HOST") || "example.com"
+  # Detect the hostname at runtime. On Unraid (and many other self-hosted
+  # environments) the machine advertises itself via mDNS as <hostname>.local.
+  # We honour PHX_HOST if explicitly provided, otherwise derive it from the
+  # operating system hostname so that LiveView origin checks succeed without
+  # additional manual configuration.
+
+  hostname =
+    case :inet.gethostname() do
+      {:ok, charlist} -> charlist |> to_string() |> String.trim()
+      _ -> "localhost"
+    end
+
+  host = System.get_env("PHX_HOST") || "#{hostname}.local"
+
   port = String.to_integer(System.get_env("PORT") || "4000")
+
+  # Prepare a small allow-list for websocket / LiveView origin checks.
+  allowed_origins = [
+    "//#{host}",
+    "//#{hostname}",
+    "//#{host}:#{port}",
+    "//#{hostname}:#{port}"
+  ]
 
   config :unraid_view, :dns_cluster_query, System.get_env("DNS_CLUSTER_QUERY")
 
@@ -48,6 +69,7 @@ if config_env() == :prod do
       ip: {0, 0, 0, 0, 0, 0, 0, 0},
       port: port
     ],
+    check_origin: allowed_origins,
     secret_key_base: secret_key_base
 
   # ## SSL Support
