@@ -18,15 +18,19 @@ defmodule UnraidViewWeb.CpuUsageLive do
 
     cores = per_core_usage()
     util = average_util(cores)
+    history = [util]
 
     {:ok,
      socket
-     |> assign(:cpu_per_core, cores)
-     |> assign(:cpu_util, util)
-     |> assign(:history, [util])
-     |> assign(:window, @default_window)
-     |> assign(:show_chart, true)
-     |> assign(:max_history, @max_history)}
+     |> assign(
+       cpu_per_core: cores,
+       cpu_util: util,
+       history: history,
+       history_json: Jason.encode!(history),
+       window: @default_window,
+       show_chart: true,
+       max_history: @max_history
+     )}
   end
 
   @impl true
@@ -83,7 +87,7 @@ defmodule UnraidViewWeb.CpuUsageLive do
           </form>
         </div>
 
-        <div id="cpu-chart-container" class="w-full h-32" phx-hook="CpuChart" phx-update="ignore" data-history={Jason.encode!(Enum.reverse(@history))} data-window={@window} data-max-history={@max_history} style={"display: #{if @show_chart, do: "block", else: "none"};"}>
+        <div id="cpu-chart-container" class="w-full h-32" phx-hook="CpuChart" phx-update="ignore" data-history={@history_json} data-window={@window} data-max-history={@max_history} style={"display: #{if @show_chart, do: "block", else: "none"};"}>
           <canvas id="cpu-chart" class="w-full h-full"></canvas>
         </div>
 
@@ -124,11 +128,6 @@ defmodule UnraidViewWeb.CpuUsageLive do
   end
 
   # Helpers -----------------------------------------------------------------
-
-  defp cpu_usage do
-    # Deprecated: kept for compatibility but no longer used.
-    average_util(per_core_usage())
-  end
 
   defp per_core_usage do
     case :cpu_sup.util([:per_cpu]) do
