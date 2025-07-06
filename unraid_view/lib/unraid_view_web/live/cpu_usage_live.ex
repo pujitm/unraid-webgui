@@ -6,7 +6,6 @@ defmodule UnraidViewWeb.CpuUsageLive do
   """
   use Phoenix.LiveView
 
-  @refresh_interval 1_000
   @max_history 300
   @default_window 60
 
@@ -14,10 +13,10 @@ defmodule UnraidViewWeb.CpuUsageLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    if connected?(socket), do: :timer.send_interval(@refresh_interval, :refresh)
+    if connected?(socket), do: UnraidView.Monitoring.CPU.subscribe()
 
-    cores = per_core_usage()
-    util = average_util(cores)
+    cores = UnraidView.Monitoring.CPU.per_core_usage()
+    util = UnraidView.Monitoring.CPU.average_util(cores)
     history = [util]
 
     {:ok,
@@ -34,10 +33,7 @@ defmodule UnraidViewWeb.CpuUsageLive do
   end
 
   @impl true
-  def handle_info(:refresh, socket) do
-    cores = per_core_usage()
-    util = average_util(cores)
-
+  def handle_info({:cpu_usage, %{per_core: cores, util: util}}, socket) do
     history =
       [util | socket.assigns.history]
       |> Enum.take(@max_history)
@@ -47,7 +43,19 @@ defmodule UnraidViewWeb.CpuUsageLive do
      |> assign(:cpu_per_core, cores)
      |> assign(:cpu_util, util)
      |> assign(:history, history)
+     |> assign(:history_json, Jason.encode!(history))
      |> push_event("cpu_usage_tick", %{value: util})}
+  end
+
+  @impl true
+  def handle_info(:refresh, socket) do
+    # No-op: legacy timer message before code reload
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info({:set_show_chart, show?}, socket) when is_boolean(show?) do
+    {:noreply, assign(socket, :show_chart, show?)}
   end
 
   @impl true
@@ -127,28 +135,5 @@ defmodule UnraidViewWeb.CpuUsageLive do
     """
   end
 
-  # Helpers -----------------------------------------------------------------
-
-  defp per_core_usage do
-    case :cpu_sup.util([:per_cpu]) do
-      list when is_list(list) ->
-        Enum.map(list, fn
-          {_, busy, _nonbusy, _misc} when is_number(busy) ->
-            busy
-
-          {_, busy_states, _nonbusy, _misc} when is_list(busy_states) ->
-            # Sum busy states if detailed option is returned unexpectedly
-            Enum.reduce(busy_states, 0.0, fn {_, val}, acc -> acc + val end)
-
-          _ ->
-            0.0
-        end)
-
-      _ ->
-        []
-    end
-  end
-
-  defp average_util([]), do: 0.0
-  defp average_util(list), do: Enum.sum(list) / length(list)
+  # Internal helpers were moved to `UnraidView.Monitoring.CPU`.
 end
