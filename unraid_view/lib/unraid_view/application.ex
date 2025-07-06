@@ -13,6 +13,7 @@ defmodule UnraidView.Application do
       {Phoenix.PubSub, name: UnraidView.PubSub},
       # Start a worker by calling: UnraidView.Worker.start_link(arg)
       # {UnraidView.Worker, arg},
+      {UnraidView.Monitoring.CPUPoller, []},
       # Start to serve requests, typically the last entry
       UnraidViewWeb.Endpoint
     ]
