@@ -9,9 +9,11 @@ defmodule Unraid.Application do
   def start(_type, _args) do
     children = [
       {DNSCluster, query: Application.get_env(:unraid, :dns_cluster_query) || :ignore},
-      {Phoenix.PubSub, name: Unraid.PubSub}
+      {Phoenix.PubSub, name: Unraid.PubSub},
       # Start a worker by calling: Unraid.Worker.start_link(arg)
       # {Unraid.Worker, arg}
+      {Registry, keys: :unique, name: Unraid.FileManager.Registry},
+      {Unraid.FileManager.Supervisor, []}
     ]
 
     Supervisor.start_link(children, strategy: :one_for_one, name: Unraid.Supervisor)
