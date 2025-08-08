@@ -52,6 +52,9 @@ sftp-config.json
 # VS Code SFTP configuration file
 .vscode/sftp.json
 
+# Local dev config
+.mise.toml
+
 # =========================
 # Exclude these dirs commonly found in /usr/local
 games/
