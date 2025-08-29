@@ -40,6 +40,26 @@ defmodule Unraid.Reader.UnraidIniTest do
       assert {:error, {1, "Trailing characters after section header"}} =
                Reader.parse("[eth0] junk")
     end
+
+    test "periods in section names are treated as regular characters" do
+      # Bare section with periods
+      text_bare = """
+      [disk1.1]
+      fsType="xfs"
+      """
+
+      assert {:ok, [{:section, "disk1.1", "disk1.1", [{:kv, "fsType", nil, "xfs"}]}]} =
+               Reader.parse(text_bare)
+
+      # Quoted section with periods
+      text_quoted = """
+      ["cache.2"]
+      name="nvme_cache"
+      """
+
+      assert {:ok, [{:section, ~s("cache.2"), "cache.2", [{:kv, "name", nil, "nvme_cache"}]}]} =
+               Reader.parse(text_quoted)
+    end
   end
 
   describe "kv parsing" do
@@ -146,6 +166,24 @@ defmodule Unraid.Reader.UnraidIniTest do
       norm = Reader.normalize(ast)
       # normalize() handles duplicate scalars: last write wins
       assert norm["x"]["A"] == "two"
+    end
+
+    test "periods in section names are normalized correctly" do
+      text = """
+      [disk1.1]
+      fsType="xfs"
+      device="/dev/sdc1"
+
+      ["cache.2"]
+      name="nvme_cache"
+      """
+
+      {:ok, ast} = Reader.parse(text)
+      norm = Reader.normalize(ast)
+      # normalize() preserves periods in section names as regular characters
+      assert norm["disk1.1"]["fsType"] == "xfs"
+      assert norm["disk1.1"]["device"] == "/dev/sdc1"
+      assert norm["cache.2"]["name"] == "nvme_cache"
     end
 
     test "comments and blanks are skipped" do
