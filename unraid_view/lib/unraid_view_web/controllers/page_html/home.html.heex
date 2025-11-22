@@ -63,16 +63,16 @@
     <p class="mt-4 leading-7 text-base-content/70">
       Build rich, interactive web applications quickly, with less code and fewer moving parts. Join our growing community of developers using Phoenix to craft APIs, HTML5 apps and more, for fun or at scale.
     </p>
-
-    <!-- Real-time CPU usage widget -->
+    
+<!-- Real-time CPU usage widget -->
     <div class="mt-8">
-      <%= live_render(@conn, UnraidViewWeb.CpuUsageLive, id: "cpu-usage") %>
+      {live_render(@conn, UnraidViewWeb.CpuUsageLive, id: "cpu-usage")}
     </div>
     <div class="mt-8">
-      <%= live_render(@conn, UnraidViewWeb.VmStatusLive, id: "vm-status") %>
+      {live_render(@conn, UnraidViewWeb.VmStatusLive, id: "vm-status")}
     </div>
     <div class="mt-8">
-      <%= live_render(@conn, UnraidViewWeb.ShareListLive, id: "share-list") %>
+      {live_render(@conn, UnraidViewWeb.ShareListLive, id: "share-list")}
     </div>
     <div class="flex">
       <div class="w-full sm:w-auto">
@@ -211,4 +211,10 @@
       </div>
     </div>
   </div>
+</div>
+
+<div class="px-4 pb-16 sm:px-6 lg:px-8 xl:px-28">
+  <section class="mx-auto mt-10 w-full max-w-6xl">
+    {live_render(@conn, UnraidViewWeb.RichTableDemoLive, id: "rich-table-demo")}
+  </section>
 </div>
