@@ -37,6 +37,25 @@ defmodule UnraidViewWeb.RichTableDemoLiveTest do
     assert find_parent_id(live_assign(view, :demo_rows), "analytics") == "orders-api"
   end
 
+  test "selection label reflects selection_changed events", %{conn: conn} do
+    {:ok, view, _html} = live_isolated(conn, UnraidViewWeb.RichTableDemoLive)
+
+    assert render(view) =~ "No rows selected"
+
+    render_hook(view, "demo:selection_changed", %{"selected_ids" => ["production"]})
+    assert render(view) =~ "1 row selected"
+
+    render_hook(view, "demo:selection_changed", %{
+      "selected_ids" => ["production", "analytics"]
+    })
+
+    assert render(view) =~ "2 rows selected"
+
+    render_hook(view, "demo:selection_changed", %{"selected_ids" => []})
+    assert render(view) =~ "No rows selected"
+  end
+
+
   defp top_level_ids(view) do
     live_assign(view, :demo_rows)
     |> Enum.map(& &1.id)

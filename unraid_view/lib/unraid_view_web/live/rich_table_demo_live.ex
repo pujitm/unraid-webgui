@@ -41,11 +41,6 @@ defmodule UnraidViewWeb.RichTableDemoLive do
   LiveViews when you need high-frequency updates without sacrificing the DX
   benefits of Phoenix LiveView.
   """
-  @moduledoc """
-  Embeds the rich table component on the landing page so people can try the
-  resizing, column ordering, and folder-style drag-and-drop gestures without
-  touching production data.
-  """
   use UnraidViewWeb, :live_view
 
   alias Phoenix.LiveView.JS
@@ -70,6 +65,7 @@ defmodule UnraidViewWeb.RichTableDemoLive do
      |> assign(:demo_cycle, 0)
      |> assign(:demo_dragging?, false)
      |> assign(:demo_row_ids, collect_row_ids(rows))
+     |> assign(:demo_selected_ids, MapSet.new())
      |> assign(:demo_cursor, 0)}
   end
 
@@ -81,6 +77,7 @@ defmodule UnraidViewWeb.RichTableDemoLive do
         JS.push("demo:inspect", value: %{row_id: row.id})
       end)
       |> assign(:table_id, @table_dom_id)
+      |> assign(:selection_label_id, "#{@table_dom_id}-selection-label")
 
     ~H"""
     <section aria-labelledby="rich-table-demo-heading" class="space-y-6">
@@ -106,6 +103,10 @@ defmodule UnraidViewWeb.RichTableDemoLive do
               <span class="badge badge-ghost badge-sm">Demo</span>
             </div>
 
+            <p id={@selection_label_id} class="mt-4 text-sm text-base-content/70">
+              {selection_summary(@demo_selected_ids, length(@demo_row_ids))}
+            </p>
+
             <.rich_table
               id={@table_id}
               rows={@demo_rows}
@@ -114,6 +115,10 @@ defmodule UnraidViewWeb.RichTableDemoLive do
               column_resize_event="demo:column_resized"
               column_order_event="demo:column_reordered"
               row_drag_event="demo:row_drag"
+              selectable={true}
+              selected_row_ids={MapSet.to_list(@demo_selected_ids)}
+              selection_event="demo:selection_changed"
+              selection_label_target={@selection_label_id}
               phx-update="ignore"
             >
               <:col :let={slot} id="name" label="Name" width={260}>
@@ -227,11 +232,18 @@ defmodule UnraidViewWeb.RichTableDemoLive do
 
     case update_rows_for_drop(socket.assigns.demo_state, params) do
       {:ok, updated_rows} ->
+        new_row_ids = collect_row_ids(updated_rows)
+
+        selection =
+          socket.assigns.demo_selected_ids
+          |> MapSet.intersection(MapSet.new(new_row_ids))
+
         socket =
           socket
           |> assign(:demo_rows, updated_rows)
           |> assign(:demo_state, updated_rows)
-          |> assign(:demo_row_ids, collect_row_ids(updated_rows))
+          |> assign(:demo_row_ids, new_row_ids)
+          |> assign(:demo_selected_ids, selection)
           |> append_log("Row dropped", detail)
 
         {:noreply, socket}
@@ -256,6 +268,19 @@ defmodule UnraidViewWeb.RichTableDemoLive do
   def handle_event("demo:column_reordered", %{"order" => order}, socket) do
     detail = Enum.join(order, " → ")
     {:noreply, append_log(socket, "Columns reordered", detail)}
+  end
+
+  @impl true
+  def handle_event("demo:selection_changed", %{"selected_ids" => ids}, socket) do
+    valid_ids = MapSet.new(socket.assigns.demo_row_ids)
+
+    selection =
+      ids
+      |> List.wrap()
+      |> MapSet.new()
+      |> MapSet.intersection(valid_ids)
+
+    {:noreply, assign(socket, :demo_selected_ids, selection)}
   end
 
   @impl true
@@ -310,6 +335,16 @@ defmodule UnraidViewWeb.RichTableDemoLive do
 
   defp normalize_width(width) when is_number(width), do: round(width)
   defp normalize_width(width), do: width
+
+  defp describe_row_drop(%{"source_ids" => [_ | _] = ids} = params) do
+    primary = List.first(ids)
+    base = describe_row_drop(Map.put(params, "source_id", primary))
+
+    case length(ids) do
+      1 -> base
+      count -> base <> " (#{count} rows)"
+    end
+  end
 
   defp describe_row_drop(%{"action" => "into", "source_id" => source, "target_id" => target}) do
     "Moved #{source} into #{target}"
@@ -552,6 +587,40 @@ defmodule UnraidViewWeb.RichTableDemoLive do
     Enum.at(@status_cycle, idx)
   end
 
+  defp selection_summary(selection, total) do
+    set = selection || MapSet.new()
+    count = MapSet.size(set)
+
+    cond do
+      count == 0 -> "No rows selected"
+      total > 0 and count == total -> "All #{total} rows selected"
+      true -> "#{count} #{pluralize_rows(count)} selected"
+    end
+  end
+
+  defp pluralize_rows(1), do: "row"
+  defp pluralize_rows(_), do: "rows"
+
+  defp update_rows_for_drop(rows, %{"source_ids" => source_ids} = params)
+       when is_list(source_ids) and source_ids != [] do
+    ids = Enum.uniq(source_ids)
+
+    case take_rows(rows, ids) do
+      {:error, _} = error ->
+        error
+
+      {trimmed_rows, nodes} ->
+        target_id = Map.get(params, "target_id")
+
+        with :ok <- validate_multi_drop(nodes, target_id),
+             {:ok, updated} <- insert_multiple(trimmed_rows, nodes, params) do
+          {:ok, updated}
+        else
+          {:error, reason} -> {:error, reason}
+        end
+    end
+  end
+
   defp update_rows_for_drop(rows, %{"source_id" => source_id} = params) do
     action = Map.get(params, "action", "end")
     target_id = Map.get(params, "target_id")
@@ -583,6 +652,21 @@ defmodule UnraidViewWeb.RichTableDemoLive do
 
   defp update_rows_for_drop(rows, _params), do: {:ok, rows}
 
+  defp validate_multi_drop(_nodes, nil), do: :ok
+
+  defp validate_multi_drop(nodes, target_id) do
+    cond do
+      Enum.any?(nodes, &(&1.id == target_id)) ->
+        {:error, "Cannot drop a row onto itself"}
+
+      Enum.any?(nodes, &descendant?(&1, target_id)) ->
+        {:error, "Cannot move a folder into its descendant"}
+
+      true ->
+        :ok
+    end
+  end
+
   defp descendant?(nil, _target_id), do: false
 
   defp descendant?(node, target_id) do
@@ -602,6 +686,23 @@ defmodule UnraidViewWeb.RichTableDemoLive do
 
   defp take_row(rows, target_id) do
     do_take_row(rows, target_id, [])
+  end
+
+  defp take_rows(rows, ids) do
+    ids
+    |> Enum.reduce_while({rows, []}, fn id, {acc_rows, acc_nodes} ->
+      {next_rows, node} = take_row(acc_rows, id)
+
+      if is_nil(node) do
+        {:halt, {:error, "Row #{id} was not found"}}
+      else
+        {:cont, {next_rows, [node | acc_nodes]}}
+      end
+    end)
+    |> case do
+      {:error, _} = error -> error
+      {remaining, nodes} -> {remaining, Enum.reverse(nodes)}
+    end
   end
 
   defp do_take_row([], _target_id, acc), do: {Enum.reverse(acc), nil}
@@ -706,6 +807,64 @@ defmodule UnraidViewWeb.RichTableDemoLive do
             end
         end
     end
+  end
+
+  defp insert_multiple(rows, nodes, params) do
+    case Map.get(params, "action", "end") do
+      "before" ->
+        insert_rows_before(rows, Enum.reverse(nodes), Map.get(params, "target_id"))
+
+      "after" ->
+        insert_rows_after(rows, nodes, Map.get(params, "target_id"))
+
+      "into" ->
+        insert_rows_into_parent(rows, nodes, Map.get(params, "target_id"))
+
+      _ ->
+        append_rows_to_root(rows, nodes)
+    end
+  end
+
+  defp insert_rows_before(_rows, _nodes, nil), do: {:error, "Target row missing"}
+
+  defp insert_rows_before(rows, [], _target_id), do: {:ok, rows}
+
+  defp insert_rows_before(rows, [node | rest], target_id) do
+    case insert_relative(rows, target_id, node, :before) do
+      {:ok, updated} -> insert_rows_before(updated, rest, target_id)
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp insert_rows_after(_rows, _nodes, nil), do: {:error, "Target row missing"}
+
+  defp insert_rows_after(rows, nodes, target_id), do: do_insert_rows_after(rows, nodes, target_id)
+
+  defp do_insert_rows_after(rows, [], _anchor_id), do: {:ok, rows}
+
+  defp do_insert_rows_after(rows, [node | rest], anchor_id) do
+    case insert_relative(rows, anchor_id, node, :after) do
+      {:ok, updated} -> do_insert_rows_after(updated, rest, node.id)
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp insert_rows_into_parent(_rows, _nodes, nil), do: {:error, "Target row missing"}
+
+  defp insert_rows_into_parent(rows, [], _target_id), do: {:ok, rows}
+
+  defp insert_rows_into_parent(rows, [node | rest], target_id) do
+    case insert_into_parent(rows, target_id, node) do
+      {:ok, updated} -> insert_rows_into_parent(updated, rest, target_id)
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp append_rows_to_root(rows, []), do: {:ok, rows}
+
+  defp append_rows_to_root(rows, [node | rest]) do
+    {:ok, updated} = append_to_root(rows, node)
+    append_rows_to_root(updated, rest)
   end
 
   defp append_to_root(rows, node), do: {:ok, rows ++ [node]}

@@ -17,7 +17,13 @@ export default {
     this.columnResizeState = null
     this.draggedHeader = null
     this.draggedRow = null
+    this.draggedRows = []
+    this.dragPrimaryRow = null
     this.columnOrder = []
+    this.selectable = this.el.dataset.selectable === "true"
+    this.selection = null
+    this.selectionHash = this.el.dataset.selectionHash || null
+    this.selectionEvent = this.el.dataset.selectionEvent || null
 
     this.setup()
     this.handleEvent("rich-table:pulse", (payload) => this.applyPulseUpdates(payload))
@@ -33,10 +39,22 @@ export default {
 
   setup() {
     this.refreshDomRefs()
+    this.selectable = this.el.dataset.selectable === "true"
+    this.selectionEvent = this.el.dataset.selectionEvent || null
+    this.pendingSelectionHash = this.el.dataset.selectionHash || null
+    this.selectionLabelTarget = this.el.dataset.selectionLabelTarget || null
+    this.selectionLabelTemplates = {
+      none: this.el.dataset.selectionLabelNone || "",
+      single: this.el.dataset.selectionLabelSingle || "",
+      multiple: this.el.dataset.selectionLabelMultiple || "",
+      all: this.el.dataset.selectionLabelAll || ""
+    }
+    this.lastSelectionBroadcast = null
     this.ensureColumnOrder()
     this.initColumnResizing()
     this.initColumnReordering()
     this.initRowDragging()
+    this.initRowSelection()
   },
 
   refreshDomRefs() {
@@ -310,7 +328,7 @@ export default {
         row.draggable = row.dataset.draggable !== "false"
 
         row.addEventListener("dragstart", (event) => this.beginRowDrag(event, row))
-        row.addEventListener("dragend", () => this.endRowDrag(row))
+        row.addEventListener("dragend", () => this.endRowDrag())
         row.addEventListener("dragover", (event) => this.handleRowDragOver(event, row))
         row.addEventListener("dragleave", () => this.clearRowDropState(row))
         row.addEventListener("drop", (event) => this.completeRowDrop(event, row))
@@ -398,7 +416,7 @@ export default {
     this.rowContainer.dataset.richTableDropzoneBound = "1"
 
     this.rowContainer.addEventListener("dragover", (event) => {
-      if (!this.draggedRow) {
+      if (!this.draggedRows.length) {
         return
       }
       event.preventDefault()
@@ -406,13 +424,13 @@ export default {
     })
 
     this.rowContainer.addEventListener("drop", (event) => {
-      if (!this.draggedRow) {
+      if (!this.draggedRows.length) {
         return
       }
       event.preventDefault()
-      this.moveRowDom(this.draggedRow, null, DROP_MODES.END)
-      this.pushRowDropEvent(this.draggedRow, null, DROP_MODES.END)
-      this.endRowDrag(this.draggedRow)
+      this.moveRowDom(this.draggedRows, null, DROP_MODES.END)
+      this.pushRowDropEvent(this.draggedRows, null, DROP_MODES.END)
+      this.endRowDrag()
     })
   },
 
@@ -423,29 +441,37 @@ export default {
       return
     }
 
+    const rowsToDrag = this.rowsForDrag(row)
     this.draggedRow = row
-    row.classList.add("is-dragging")
-    row.dataset.dragging = "1"
+    this.dragPrimaryRow = row
+    this.draggedRows = rowsToDrag
+    rowsToDrag.forEach((currentRow) => {
+      currentRow.classList.add("is-dragging")
+      currentRow.dataset.dragging = "1"
+    })
     event.dataTransfer.effectAllowed = "move"
     event.dataTransfer.setData("text/plain", row.dataset.rowId)
     this.notifyRowDrag("start", row)
   },
 
-  endRowDrag(row) {
-    if (row) {
-      row.classList.remove("is-dragging")
+  endRowDrag() {
+    if (this.draggedRows.length) {
+      this.draggedRows.forEach((row) => {
+        row.classList.remove("is-dragging")
+        row.dataset.dragging = "0"
+        row.dataset.handleActive = "0"
+      })
     }
-    if (row) {
-      row.dataset.dragging = "0"
-      row.dataset.handleActive = "0"
-    }
+    const primaryRow = this.dragPrimaryRow
     this.draggedRow = null
+    this.dragPrimaryRow = null
+    this.draggedRows = []
     this.clearAllRowDropStates()
-    this.notifyRowDrag("end", row)
+    this.notifyRowDrag("end", primaryRow)
   },
 
   handleRowDragOver(event, row) {
-    if (!this.draggedRow || row === this.draggedRow) {
+    if (!this.draggedRows.length || this.draggedRows.includes(row)) {
       return
     }
 
@@ -460,16 +486,16 @@ export default {
   },
 
   completeRowDrop(event, row) {
-    if (!this.draggedRow || row === this.draggedRow) {
+    if (!this.draggedRows.length || this.draggedRows.includes(row)) {
       return
     }
 
     event.preventDefault()
     event.stopPropagation()
     const mode = this.rowDropMode(event, row)
-    this.moveRowDom(this.draggedRow, row, mode)
-    this.pushRowDropEvent(this.draggedRow, row, mode)
-    this.endRowDrag(this.draggedRow)
+    this.moveRowDom(this.draggedRows, row, mode)
+    this.pushRowDropEvent(this.draggedRows, row, mode)
+    this.endRowDrag()
   },
 
   rowDropMode(event, row) {
@@ -506,29 +532,49 @@ export default {
     )
   },
 
-  moveRowDom(sourceRow, targetRow, mode) {
+  moveRowDom(sourceRows, targetRow, mode) {
     if (!this.rowContainer) {
       return
     }
 
+    const rows = Array.isArray(sourceRows) ? sourceRows : [sourceRows]
+    if (!rows.length) {
+      return
+    }
+
     if (mode === DROP_MODES.END || !targetRow) {
-      this.rowContainer.appendChild(sourceRow)
-      this.setRowParent(sourceRow, null, 0)
+      rows.forEach((row) => {
+        this.rowContainer.appendChild(row)
+        this.setRowParent(row, null, 0)
+      })
       return
     }
 
     if (mode === DROP_MODES.BEFORE) {
-      this.rowContainer.insertBefore(sourceRow, targetRow)
-      this.setRowParent(sourceRow, targetRow.dataset.parentId, this.getRowDepth(targetRow))
-    } else if (mode === DROP_MODES.AFTER) {
-      this.rowContainer.insertBefore(sourceRow, targetRow.nextElementSibling)
-      this.setRowParent(sourceRow, targetRow.dataset.parentId, this.getRowDepth(targetRow))
-    } else {
-      const insertionPoint = this.findFolderInsertionPoint(targetRow)
-      const depth = this.getRowDepth(targetRow) + 1
-      this.rowContainer.insertBefore(sourceRow, insertionPoint)
-      this.setRowParent(sourceRow, targetRow.dataset.rowId, depth)
+      rows.forEach((row) => {
+        this.rowContainer.insertBefore(row, targetRow)
+        this.setRowParent(row, targetRow.dataset.parentId, this.getRowDepth(targetRow))
+      })
+      return
     }
+
+    if (mode === DROP_MODES.AFTER) {
+      let reference = targetRow.nextElementSibling
+
+      rows.forEach((row) => {
+        this.rowContainer.insertBefore(row, reference)
+        this.setRowParent(row, targetRow.dataset.parentId, this.getRowDepth(targetRow))
+        reference = row.nextElementSibling
+      })
+      return
+    }
+
+    const insertionPoint = this.findFolderInsertionPoint(targetRow)
+    const depth = this.getRowDepth(targetRow) + 1
+    rows.forEach((row) => {
+      this.rowContainer.insertBefore(row, insertionPoint)
+      this.setRowParent(row, targetRow.dataset.rowId, depth)
+    })
   },
 
   setRowParent(row, parentId, depth) {
@@ -557,17 +603,27 @@ export default {
     return parseInt(row?.dataset.depth || "0", 10)
   },
 
-  pushRowDropEvent(sourceRow, targetRow, mode) {
+  pushRowDropEvent(sourceRows, targetRow, mode) {
+    const rows = Array.isArray(sourceRows) ? sourceRows : [sourceRows]
+    if (!rows.length) {
+      return
+    }
+    const primaryRow = rows[0]
+    const sourceIds = rows
+      .map((row) => row.dataset.rowId)
+      .filter((rowId) => rowId != null)
+
     this.pushTableEvent(this.el.dataset.rowDropEvent, {
       table_id: this.el.id,
-      source_id: sourceRow.dataset.rowId,
+      source_id: primaryRow.dataset.rowId,
+      source_ids: sourceIds,
       target_id: targetRow ? targetRow.dataset.rowId : null,
       action: mode,
-      source_parent_id: sourceRow.dataset.parentId || null,
+      source_parent_id: primaryRow.dataset.parentId || null,
       target_parent_id: targetRow ? targetRow.dataset.parentId || null : null,
-      source_depth: this.getRowDepth(sourceRow),
+      source_depth: this.getRowDepth(primaryRow),
       target_depth: targetRow ? this.getRowDepth(targetRow) : 0,
-      source_index: this.rowIndexFor(sourceRow.dataset.rowId),
+      source_index: this.rowIndexFor(primaryRow.dataset.rowId),
       target_index: targetRow ? this.rowIndexFor(targetRow.dataset.rowId) : this.rowCount() - 1
     })
   },
@@ -584,6 +640,334 @@ export default {
     return Array.from(this.rowContainer?.querySelectorAll("tr[data-row-id]") || []).map(
       (row) => row.dataset.rowId
     )
+  },
+
+  initRowSelection() {
+    if (!this.selectable) {
+      this.selection = null
+      this.selectionHash = null
+      this.rowSelectionInputs = []
+      this.headerSelectionInput = null
+      return
+    }
+
+    if (!this.selection || this.pendingSelectionHash !== this.selectionHash) {
+      this.selection = new Set(this.parseSelectedRowsAttr())
+      this.selectionHash = this.pendingSelectionHash
+    } else if (!this.selection) {
+      this.selection = new Set()
+    }
+
+    this.pruneSelection({silent: true})
+
+    const rowInputs = Array.from(this.el.querySelectorAll('input[data-selection-control="row"]'))
+    rowInputs.forEach((input) => {
+      if (input.dataset.selectionBound === "1") {
+        return
+      }
+      input.dataset.selectionBound = "1"
+
+      const halt = (event) => {
+        event.stopPropagation()
+      }
+
+      input.addEventListener("pointerdown", halt)
+      input.addEventListener("pointerup", halt)
+      input.addEventListener("click", halt)
+      input.addEventListener("change", (event) => {
+        event.stopPropagation()
+        this.handleRowCheckboxChange(input)
+      })
+    })
+    this.rowSelectionInputs = rowInputs
+
+    const headerInput = this.el.querySelector('input[data-selection-control="header"]')
+    if (headerInput && headerInput.dataset.selectionBound !== "1") {
+      headerInput.dataset.selectionBound = "1"
+      headerInput.addEventListener("click", (event) => {
+        event.preventDefault()
+        event.stopPropagation()
+        this.toggleHeaderSelection()
+      })
+    }
+    this.headerSelectionInput = headerInput
+
+    this.syncSelectionIntoDom()
+  },
+
+  handleRowCheckboxChange(input) {
+    if (!this.selection) {
+      this.selection = new Set()
+    }
+    const rowId = input.dataset.rowId
+    if (!rowId) {
+      return
+    }
+
+    if (input.checked) {
+      this.selection.add(rowId)
+    } else {
+      this.selection.delete(rowId)
+    }
+
+    this.syncSelectionIntoDom()
+    this.pushSelectionChange()
+  },
+
+  syncSelectionIntoDom() {
+    if (!this.selectable) {
+      this.updateSelectionLabel()
+      return
+    }
+
+    if (!this.selection) {
+      this.selection = new Set()
+    }
+
+    const selectedIds = this.selection
+    const rows = this.getAllRows()
+    rows.forEach((row) => {
+      const isSelected = selectedIds.has(row.dataset.rowId)
+      this.setRowSelectionState(row, isSelected)
+    })
+
+    if (this.rowSelectionInputs) {
+      this.rowSelectionInputs.forEach((input) => {
+        input.checked = selectedIds.has(input.dataset.rowId)
+      })
+    }
+
+    const selectedCount = selectedIds.size
+    const totalCount = rows.length
+    this.updateHeaderSelectionState(selectedCount, totalCount)
+    this.updateSelectionLabel(selectedCount, totalCount)
+  },
+
+  setRowSelectionState(row, selected) {
+    if (!row) {
+      return
+    }
+
+    if (selected) {
+      row.dataset.selected = "true"
+    } else {
+      delete row.dataset.selected
+    }
+
+    row.classList.toggle("rich-table__row--selected", Boolean(selected))
+  },
+
+  updateHeaderSelectionState(selectedCount, totalCount) {
+    if (!this.headerSelectionInput) {
+      return
+    }
+
+    const total =
+      typeof totalCount === "number" ? totalCount : this.getSelectableRowIds().length
+    const count =
+      typeof selectedCount === "number" ? selectedCount : this.selection ? this.selection.size : 0
+    const checked = total > 0 && count === total
+    const indeterminate = count > 0 && count < total
+
+    this.headerSelectionInput.checked = checked
+    this.headerSelectionInput.indeterminate = indeterminate
+    this.headerSelectionInput.setAttribute(
+      "aria-checked",
+      indeterminate ? "mixed" : checked ? "true" : "false"
+    )
+  },
+
+  updateSelectionLabel(countOverride, totalOverride) {
+    const count =
+      typeof countOverride === "number"
+        ? countOverride
+        : this.selection
+          ? this.selection.size
+          : 0
+    const total =
+      typeof totalOverride === "number" ? totalOverride : this.getAllRows().length
+
+    if (this.selectionLabelTarget) {
+      const labelEl = document.getElementById(this.selectionLabelTarget)
+      if (labelEl) {
+        const text = this.selectionLabelText(count, total)
+        if (typeof text === "string" && text.length && labelEl.textContent !== text) {
+          labelEl.textContent = text
+        }
+      }
+    }
+
+    this.dispatchSelectionChangeEvent(count, total)
+  },
+
+  selectionLabelText(count, total) {
+    if (!this.selectionLabelTemplates) {
+      return null
+    }
+
+    let template
+    if (count === 0) {
+      template = this.selectionLabelTemplates.none
+    } else if (total > 0 && count === total) {
+      template = this.selectionLabelTemplates.all
+    } else if (count === 1) {
+      template = this.selectionLabelTemplates.single
+    } else {
+      template = this.selectionLabelTemplates.multiple
+    }
+
+    return this.formatSelectionLabel(template, count, total)
+  },
+
+  formatSelectionLabel(template, count, total) {
+    if (typeof template !== "string" || template.length === 0) {
+      return ""
+    }
+
+    return template.replace(/%COUNT%/g, count).replace(/%TOTAL%/g, total)
+  },
+
+  dispatchSelectionChangeEvent(count, total) {
+    const signature = `${count}/${total}`
+    if (this.lastSelectionBroadcast === signature) {
+      return
+    }
+
+    this.lastSelectionBroadcast = signature
+
+    window.dispatchEvent(
+      new CustomEvent("rich-table:selection-changed", {
+        detail: {
+          tableId: this.el.id,
+          count,
+          total
+        }
+      })
+    )
+  },
+
+  toggleHeaderSelection() {
+    if (!this.selectable) {
+      return
+    }
+
+    const total = this.getSelectableRowIds().length
+
+    if (total === 0) {
+      this.clearSelection()
+      return
+    }
+
+    if (this.selection && this.selection.size === total) {
+      this.clearSelection()
+    } else {
+      this.selectAllRows()
+    }
+  },
+
+  selectAllRows() {
+    this.selection = new Set(this.getSelectableRowIds())
+    this.syncSelectionIntoDom()
+    this.pushSelectionChange()
+  },
+
+  clearSelection() {
+    if (!this.selection) {
+      this.selection = new Set()
+    } else {
+      this.selection.clear()
+    }
+    this.syncSelectionIntoDom()
+    this.pushSelectionChange()
+  },
+
+  pruneSelection(options = {}) {
+    if (!this.selection) {
+      this.selection = new Set()
+      return
+    }
+
+    const allowedIds = new Set(this.getSelectableRowIds())
+    let changed = false
+
+    Array.from(this.selection).forEach((rowId) => {
+      if (!allowedIds.has(rowId)) {
+        this.selection.delete(rowId)
+        changed = true
+      }
+    })
+
+    if (changed) {
+      this.syncSelectionIntoDom()
+      if (!options.silent) {
+        this.pushSelectionChange()
+      }
+    }
+  },
+
+  getAllRows() {
+    return Array.from(this.rowContainer?.querySelectorAll("tr[data-row-id]") || [])
+  },
+
+  getSelectableRowIds() {
+    return this.getAllRows()
+      .map((row) => row.dataset.rowId)
+      .filter((rowId) => rowId != null)
+  },
+
+  getSelectedRowElements() {
+    if (!this.selection || !this.selection.size) {
+      return []
+    }
+    return this.getAllRows().filter((row) => this.selection.has(row.dataset.rowId))
+  },
+
+  getSelectedRowIdsInDomOrder() {
+    if (!this.selection || !this.selection.size) {
+      return []
+    }
+    return this.getAllRows()
+      .map((row) => row.dataset.rowId)
+      .filter((rowId) => rowId && this.selection.has(rowId))
+  },
+
+  rowsForDrag(row) {
+    if (!row) {
+      return []
+    }
+
+    if (!this.selectable || !this.selection || !this.selection.has(row.dataset.rowId)) {
+      return [row]
+    }
+
+    const selectedRows = this.getSelectedRowElements()
+    return selectedRows.length ? selectedRows : [row]
+  },
+
+  parseSelectedRowsAttr() {
+    const payload = this.el.dataset.selectedRows
+    if (!payload) {
+      return []
+    }
+
+    try {
+      const parsed = JSON.parse(payload)
+      return Array.isArray(parsed) ? parsed : []
+    } catch (_error) {
+      return []
+    }
+  },
+
+  pushSelectionChange(options = {}) {
+    if (!this.selectionEvent || options.silent) {
+      return
+    }
+
+    const selectedIds = this.getSelectedRowIdsInDomOrder()
+    this.pushTableEvent(this.selectionEvent, {
+      table_id: this.el.id,
+      selected_ids: selectedIds
+    })
   },
 
   applyPulseUpdates(payload) {
