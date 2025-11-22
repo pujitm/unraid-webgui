@@ -70,47 +70,88 @@ defmodule UnraidViewWeb.RichTableComponents do
   @default_column_resize_event "rich_table:column_resized"
   @default_column_order_event "rich_table:column_reordered"
 
-  attr :id, :string, required: true
-  attr :rows, :list, required: true
+  attr(:id, :string, required: true)
+  attr(:rows, :list, required: true)
 
-  attr :row_id, :any,
+  attr(:row_id, :any,
     default: nil,
     doc: "function, atom, or string used to derive a unique row identifier"
+  )
 
-  attr :row_item, :any,
+  attr(:row_item, :any,
     default: &Function.identity/1,
     doc: "transformation applied to each row before it is passed to slots"
+  )
 
-  attr :row_click, :any, default: nil, doc: "optional callback returning a JS command per row"
+  attr(:row_click, :any, default: nil, doc: "optional callback returning a JS command per row")
 
-  attr :row_class, :any,
+  attr(:row_class, :any,
     default: nil,
     doc: "string or 1-arity function for conditional row classes"
+  )
 
-  attr :row_indent, :integer, default: 20, doc: "pixel offset per nested level"
-  attr :row_drop_event, :string, default: @default_row_drop_event
-  attr :column_resize_event, :string, default: @default_column_resize_event
-  attr :column_order_event, :string, default: @default_column_order_event
-  attr :row_drag_event, :string, default: nil
-  attr :class, :string, default: nil
-  attr :rest, :global
+  attr(:row_indent, :integer, default: 20, doc: "pixel offset per nested level")
+  attr(:row_drop_event, :string, default: @default_row_drop_event)
+  attr(:column_resize_event, :string, default: @default_column_resize_event)
+  attr(:column_order_event, :string, default: @default_column_order_event)
+  attr(:row_drag_event, :string, default: nil)
+  attr(:selectable, :boolean, default: false)
+  attr(:selected_row_ids, :list, default: [])
+  attr(:selection_event, :string, default: nil)
+  attr(:selection_label_target, :string, default: nil)
+  attr(:selection_label_strings, :map, default: %{})
+  attr(:class, :string, default: nil)
+  attr(:rest, :global)
 
   slot :col, required: true do
-    attr :id, :string, required: true
-    attr :label, :string, required: true
-    attr :width, :integer
-    attr :min_width, :integer
-    attr :class, :string
-    attr :resizable, :boolean
-    attr :reorderable, :boolean
+    attr(:id, :string, required: true)
+    attr(:label, :string, required: true)
+    attr(:width, :integer)
+    attr(:min_width, :integer)
+    attr(:class, :string)
+    attr(:resizable, :boolean)
+    attr(:reorderable, :boolean)
   end
 
-  slot :action, doc: "Optional trailing column rendered as row-level actions"
+  slot(:action, doc: "Optional trailing column rendered as row-level actions")
 
   def rich_table(assigns) do
     row_id_fun = build_row_id_fun(assigns.row_id)
     column_config = Enum.map(assigns.col, &column_config/1)
     zipped_columns = Enum.zip(assigns.col, column_config)
+
+    selected_ids =
+      if assigns.selectable do
+        assigns.selected_row_ids |> List.wrap() |> MapSet.new()
+      else
+        MapSet.new()
+      end
+
+    flat_rows =
+      flatten_rows(assigns.rows, row_id_fun, assigns.row_item)
+      |> Enum.map(fn row ->
+        Map.put(row, :selected, MapSet.member?(selected_ids, row.id))
+      end)
+
+    sorted_selection = selected_ids |> MapSet.to_list() |> Enum.sort()
+
+    selection_payload =
+      if assigns.selectable do
+        Jason.encode!(sorted_selection)
+      else
+        nil
+      end
+
+    selection_hash =
+      if assigns.selectable do
+        sorted_selection
+        |> :erlang.phash2()
+        |> Integer.to_string()
+      else
+        nil
+      end
+
+    selection_label_strings = build_selection_label_strings(assigns.selection_label_strings)
 
     assigns =
       assigns
@@ -120,9 +161,14 @@ defmodule UnraidViewWeb.RichTableComponents do
         Enum.map(zipped_columns, fn {slot, config} -> %{slot: slot, config: config} end)
       )
       |> assign(:column_payload, Jason.encode!(column_config))
-      |> assign(:flat_rows, flatten_rows(assigns.rows, row_id_fun, assigns.row_item))
+      |> assign(:flat_rows, flat_rows)
       |> assign(:row_container_id, "#{assigns.id}-rows")
       |> assign(:has_actions?, assigns.action != [])
+      |> assign(:selectable?, assigns.selectable)
+      |> assign(:selection_payload, selection_payload)
+      |> assign(:selection_hash, selection_hash)
+      |> assign(:selection_label_target, assigns.selection_label_target)
+      |> assign(:selection_label_strings, selection_label_strings)
       |> assign(:rest_attrs, clean_rest(assigns.rest))
 
     ~H"""
@@ -139,6 +185,25 @@ defmodule UnraidViewWeb.RichTableComponents do
       data-column-order-event={@column_order_event}
       data-row-drop-event={@row_drop_event}
       data-row-drag-event={@row_drag_event}
+      data-selectable={@selectable? && "true"}
+      data-selection-event={@selectable? && @selection_event}
+      data-selected-rows={@selectable? && @selection_payload}
+      data-selection-hash={@selectable? && @selection_hash}
+      data-selection-label-target={
+        if(@selectable? && @selection_label_target, do: @selection_label_target)
+      }
+      data-selection-label-none={
+        if(@selectable? && @selection_label_target, do: @selection_label_strings.none)
+      }
+      data-selection-label-single={
+        if(@selectable? && @selection_label_target, do: @selection_label_strings.single)
+      }
+      data-selection-label-multiple={
+        if(@selectable? && @selection_label_target, do: @selection_label_strings.multiple)
+      }
+      data-selection-label-all={
+        if(@selectable? && @selection_label_target, do: @selection_label_strings.all)
+      }
       style={"--rich-table-indent-size: #{@row_indent}px;"}
       {@rest_attrs}
     >
@@ -146,6 +211,18 @@ defmodule UnraidViewWeb.RichTableComponents do
         <table class="rich-table__table">
           <thead>
             <tr>
+              <th
+                :if={@selectable?}
+                class="rich-table__header-cell rich-table__header-cell--selection"
+              >
+                <label class="sr-only">{gettext("Toggle all rows")}</label>
+                <input
+                  type="checkbox"
+                  class="rich-table__selection-checkbox"
+                  data-selection-control="header"
+                  aria-label={gettext("Toggle all rows")}
+                />
+              </th>
               <th
                 :for={entry <- @column_entries}
                 data-col-id={entry.config.id}
@@ -175,10 +252,21 @@ defmodule UnraidViewWeb.RichTableComponents do
               data-parent-id={row.parent_id}
               data-draggable={row.draggable}
               data-droppable={row.droppable}
+              data-selected={row.selected && "true"}
               draggable={row.draggable}
               class={row_classes(row, @row_class)}
               phx-click={maybe_row_click(@row_click, row.presented)}
             >
+              <td :if={@selectable?} class="rich-table__cell rich-table__cell--selection">
+                <input
+                  type="checkbox"
+                  class="rich-table__selection-checkbox"
+                  data-selection-control="row"
+                  data-row-id={row.id}
+                  checked={row.selected}
+                  aria-label={gettext("Select %{row}", row: row_selection_label(row.presented))}
+                />
+              </td>
               <td
                 :for={{entry, index} <- Enum.with_index(@column_entries)}
                 class={[
@@ -249,8 +337,18 @@ defmodule UnraidViewWeb.RichTableComponents do
       "rich-table__row",
       row.type == :folder && "rich-table__row--folder",
       row.draggable == false && "rich-table__row--static",
+      row.selected && "rich-table__row--selected",
       row_class(row_class, row.presented)
     ]
+  end
+
+  defp row_selection_label(row) do
+    row_value(row, :name, "name") ||
+      row_value(row, :title, "title") ||
+      row_value(row, :id, "id") ||
+      gettext("row")
+  rescue
+    _ -> gettext("row")
   end
 
   defp row_class(nil, _row), do: nil
@@ -384,6 +482,38 @@ defmodule UnraidViewWeb.RichTableComponents do
   end
 
   defp normalize_boolean(_, default), do: default
+
+  defp build_selection_label_strings(strings) do
+    defaults = %{
+      none: gettext("No rows selected"),
+      single: gettext("1 row selected"),
+      multiple: gettext("%COUNT% rows selected"),
+      all: gettext("All %COUNT% rows selected")
+    }
+
+    strings
+    |> normalize_label_strings()
+    |> Map.merge(defaults, fn _key, _left, right -> right end)
+  end
+
+  defp normalize_label_strings(strings) when is_map(strings) do
+    Enum.reduce(strings, %{}, fn {key, value}, acc ->
+      atom_key =
+        cond do
+          is_atom(key) -> key
+          is_binary(key) -> safe_to_existing_atom(key)
+          true -> nil
+        end
+
+      if atom_key in [:none, :single, :multiple, :all] and is_binary(value) do
+        Map.put(acc, atom_key, value)
+      else
+        acc
+      end
+    end)
+  end
+
+  defp normalize_label_strings(_), do: %{}
 
   defp clean_rest(nil), do: %{}
   defp clean_rest(rest) when is_map(rest), do: Map.drop(rest, [:class, "class"])

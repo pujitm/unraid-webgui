@@ -140,6 +140,13 @@
   width: 60px;
 }
 
+.rich-table__header-cell--selection {
+  width: 48px;
+  text-align: center;
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+}
+
 .rich-table__header-label {
   pointer-events: none;
 }
@@ -195,6 +202,10 @@
   border-bottom: 1px solid var(--rich-table-border-color);
 }
 
+.rich-table__row--selected {
+  background: color-mix(in srgb, var(--color-primary) 8%, var(--color-base-100));
+}
+
 .rich-table__row:last-child {
   border-bottom: none;
 }
@@ -231,6 +242,13 @@
   padding: 0.65rem 0.9rem;
   vertical-align: middle;
   border-right: 1px solid var(--rich-table-border-color);
+}
+
+.rich-table__cell--selection {
+  width: 48px;
+  text-align: center;
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
 }
 
 .rich-table__cell:last-child {
@@ -287,6 +305,18 @@
 
 .rich-table__drag-handle:active {
   cursor: grabbing;
+}
+
+.rich-table__selection-checkbox {
+  width: 1.1rem;
+  height: 1.1rem;
+  accent-color: var(--color-primary);
+  cursor: pointer;
+}
+
+.rich-table__selection-checkbox:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--color-primary) 60%, transparent);
+  outline-offset: 2px;
 }
 
 .rich-table__folder-indicator {
