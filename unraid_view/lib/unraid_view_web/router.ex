@@ -18,6 +18,7 @@ defmodule UnraidViewWeb.Router do
     pipe_through :browser
 
     get "/", PageController, :home
+    live "/event-demo", EventDemoLive
   end
 
   # Other scopes may use custom stacks.
