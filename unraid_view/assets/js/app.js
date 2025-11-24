@@ -84,3 +84,33 @@ if (process.env.NODE_ENV === "development") {
   })
 }
 
+// The following enables data-on-<event> attributes to execute Phoenix.LiveView.JS
+// on the element when the event is dispatched.
+//
+// This enables a generic pattern like <div class="text-error" data-on-action_failed={JS.show()}>
+// where "action_failed" is the event name and JS.show() is the JS to execute.
+//
+// Notably, data-on-<event> does not allow arbitrary JS, only the Phoenix.LiveView.JS DSL.
+const originalDispatchEvent = window.dispatchEvent.bind(window)
+
+// Lifecycle note: this implementation dispatches after the original dispatch, rather than before it.
+window.dispatchEvent = function (event) {
+  const result = originalDispatchEvent(event)
+
+  if (event.type.startsWith("phx:")) {
+    const name = event.type.slice("phx:".length)
+
+    document
+      .querySelectorAll(`[data-on-${name}]`)
+      .forEach((el) => {
+        const js = el.getAttribute(`data-on-${name}`)
+        if (!js) return
+
+        // optional: gate on event.detail.id, etc.
+        liveSocket.execJS(el, js)
+      })
+  }
+
+  return result
+}
+
