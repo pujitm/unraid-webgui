@@ -42,9 +42,9 @@ defmodule UnraidViewWeb.VmStatusLive do
           <ul class="divide-y divide-base-300">
             <%= for {name, status} <- @vms do %>
               <li class="flex items-center justify-between py-1">
-                <span class="font-medium"><%= name %></span>
+                <span class="font-medium">{name}</span>
                 <span class={["badge badge-sm", badge_class(status)]}>
-                  <%= status %>
+                  {status}
                 </span>
               </li>
             <% end %>
@@ -66,7 +66,8 @@ defmodule UnraidViewWeb.VmStatusLive do
       {output, 0} ->
         output
         |> String.split("\n", trim: true)
-        |> Enum.drop(2) # skip header lines
+        # skip header lines
+        |> Enum.drop(2)
         |> Enum.filter(&(String.trim(&1) != ""))
         |> Enum.map(&parse_line/1)
 
