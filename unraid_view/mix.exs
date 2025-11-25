@@ -57,7 +57,8 @@ defmodule UnraidView.MixProject do
       {:dns_cluster, "~> 0.1.1"},
       {:bandit, "~> 1.5"},
       {:eini, "~> 1.2"},
-      {:ex_docker_engine_api, "~> 1.4"}
+      {:ex_docker_engine_api, "~> 1.4"},
+      {:expty, "~> 0.2"}
     ]
   end
 
@@ -70,7 +71,7 @@ defmodule UnraidView.MixProject do
   defp aliases do
     [
       setup: ["deps.get", "assets.setup", "assets.build"],
-      "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing"],
+      "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing", "cmd --cd assets npm install"],
       "assets.build": ["tailwind unraid_view", "esbuild unraid_view"],
       "assets.deploy": [
         "tailwind unraid_view --minify",

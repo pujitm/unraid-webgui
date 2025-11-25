@@ -101,6 +101,10 @@
 
 /* This file is for your main application CSS */
 
+/* xterm.js terminal emulator styles */
+@import "@xterm/xterm/css/xterm.css";
+@import "./terminal.css";
+
 /* -------------------------------------------------------------------------- */
 /* Rich table component                                                       */
 /* -------------------------------------------------------------------------- */

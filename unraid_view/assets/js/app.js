@@ -26,9 +26,10 @@ import topbar from "../vendor/topbar"
 import CpuChartHook from "./cpu_chart_hook"
 import ChartToggleHook from "./chart_toggle_hook"
 import RichTableHook from "./rich_table_hook"
+import TerminalHook from "./terminal_hook"
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
-const Hooks = { CpuChart: CpuChartHook, ChartToggle: ChartToggleHook, RichTable: RichTableHook }
+const Hooks = { CpuChart: CpuChartHook, ChartToggle: ChartToggleHook, RichTable: RichTableHook, Terminal: TerminalHook }
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},

@@ -1,0 +1,76 @@
+/* -------------------------------------------------------------------------- */
+/* Terminal component                                                          */
+/* -------------------------------------------------------------------------- */
+
+.terminal-container {
+  position: relative;
+  background: #1e1e2e;
+  border-radius: var(--radius-box, 0.5rem);
+  overflow: hidden;
+}
+
+.terminal-container[data-theme="light"] {
+  background: #eff1f5;
+}
+
+.terminal-container [data-terminal-target="container"] {
+  width: 100%;
+  height: 100%;
+  padding: 0.5rem;
+}
+
+/* Ensure xterm fills container */
+.terminal-container .xterm {
+  height: 100%;
+}
+
+.terminal-container .xterm-viewport {
+  overflow-y: auto !important;
+}
+
+/* Scrollbar styling for dark theme */
+.terminal-container .xterm-viewport::-webkit-scrollbar {
+  width: 8px;
+}
+
+.terminal-container .xterm-viewport::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.terminal-container .xterm-viewport::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+}
+
+.terminal-container .xterm-viewport::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* Light theme scrollbar */
+.terminal-container[data-theme="light"] .xterm-viewport::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.terminal-container[data-theme="light"] .xterm-viewport::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.25);
+}
+
+/* Loading state */
+.terminal-container--loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+}
+
+.terminal-container--loading::after {
+  content: "Connecting...";
+  color: rgba(255, 255, 255, 0.5);
+  font-family: monospace;
+}
+
+/* Focus ring */
+.terminal-container:focus-within {
+  outline: 2px solid var(--color-primary, #89b4fa);
+  outline-offset: 2px;
+}
