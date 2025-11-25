@@ -54,9 +54,9 @@ defmodule UnraidViewWeb.ShareListLive do
           <ul class="divide-y divide-base-300">
             <%= for %{name: name, comment: comment} <- @shares do %>
               <li class="flex flex-col py-1 sm:flex-row sm:items-center sm:justify-between">
-                <span class="font-medium"><%= name %></span>
+                <span class="font-medium">{name}</span>
                 <%= if comment != "" do %>
-                  <span class="text-xs opacity-80"><%= comment %></span>
+                  <span class="text-xs opacity-80">{comment}</span>
                 <% end %>
               </li>
             <% end %>
@@ -97,7 +97,9 @@ defmodule UnraidViewWeb.ShareListLive do
   # try again.
   defp parse_ini(contents) do
     case :eini.parse(String.to_charlist(contents)) do
-      {:ok, _} = ok -> ok
+      {:ok, _} = ok ->
+        ok
+
       {:error, _} ->
         contents
         |> String.replace(~r/\[\"([^\"]+)\"\]/, "[\\1]")

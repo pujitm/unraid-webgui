@@ -57,6 +57,7 @@ defmodule UnraidViewWeb.CpuUsageLive do
   def handle_info({:set_show_chart, show?}, socket) when is_boolean(show?) do
     require Logger
     Logger.info("CpuUsageLive received :set_show_chart #{inspect(show?)}")
+
     {:noreply,
      socket
      |> assign(:show_chart, show?)
@@ -83,8 +84,14 @@ defmodule UnraidViewWeb.CpuUsageLive do
     <div class="card bg-base-100 shadow-xl card-border border-primary">
       <div class="card-body">
         <h2 class="card-title text-sm">CPU Usage</h2>
-        <button id="btn-toggle-chart" class="btn btn-xs ml-auto" phx-hook="ChartToggle" data-container-id="cpu-chart-container" data-initial-show={@show_chart}>
-          <%= if @show_chart, do: "Hide Chart", else: "Show Chart" %>
+        <button
+          id="btn-toggle-chart"
+          class="btn btn-xs ml-auto"
+          phx-hook="ChartToggle"
+          data-container-id="cpu-chart-container"
+          data-initial-show={@show_chart}
+        >
+          {if @show_chart, do: "Hide Chart", else: "Show Chart"}
         </button>
 
         <div class="flex items-center gap-2 mb-2">
@@ -100,7 +107,16 @@ defmodule UnraidViewWeb.CpuUsageLive do
           </form>
         </div>
 
-        <div id="cpu-chart-container" class="w-full h-32" phx-hook="CpuChart" phx-update="ignore" data-history={@history_json} data-window={@window} data-max-history={@max_history} style={"display: #{if @show_chart, do: "block", else: "none"};"}>
+        <div
+          id="cpu-chart-container"
+          class="w-full h-32"
+          phx-hook="CpuChart"
+          phx-update="ignore"
+          data-history={@history_json}
+          data-window={@window}
+          data-max-history={@max_history}
+          style={"display: #{if @show_chart, do: "block", else: "none"};"}
+        >
           <canvas id="cpu-chart" class="w-full h-full"></canvas>
         </div>
 
@@ -110,7 +126,8 @@ defmodule UnraidViewWeb.CpuUsageLive do
               <div
                 class="bg-primary h-3 rounded-full transition-all duration-300 ease-in-out"
                 style={"width: #{@cpu_util}%"}
-              ></div>
+              >
+              </div>
             </div>
           </div>
           <span class="text-lg font-semibold min-w-[3rem] text-right">
@@ -120,17 +137,18 @@ defmodule UnraidViewWeb.CpuUsageLive do
         <div class="flex flex-col gap-2 mt-4">
           <%= for {util, idx} <- Enum.with_index(@cpu_per_core) do %>
             <div class="flex items-center gap-2">
-              <span class="text-xs font-medium w-14">Core <%= idx %></span>
+              <span class="text-xs font-medium w-14">Core {idx}</span>
               <div class="flex-1">
                 <div class="w-full bg-base-300 rounded-full h-2">
                   <div
                     class="bg-secondary h-2 rounded-full transition-all duration-300 ease-in-out"
                     style={"width: #{util}%"}
-                  ></div>
+                  >
+                  </div>
                 </div>
               </div>
               <span class="text-xs font-medium min-w-[3rem] text-right">
-                <%= Float.round(util, 1) %>%
+                {Float.round(util, 1)}%
               </span>
             </div>
           <% end %>
