@@ -26,6 +26,7 @@ defmodule UnraidViewWeb.Router do
 
     live_session :dashboard, layout: {UnraidViewWeb.Layouts, :wide} do
       live "/docker", DockerLive
+      live "/terminal", TerminalLive
     end
   end
 

@@ -17,6 +17,9 @@ defmodule UnraidView.Application do
       # Docker streaming services
       {UnraidView.Docker.StatsStreamer, []},
       {UnraidView.Docker.EventsStreamer, []},
+      # Terminal session management
+      {Registry, keys: :unique, name: UnraidView.Terminal.Registry},
+      {UnraidView.Terminal.TerminalSupervisor, []},
       # Start to serve requests, typically the last entry
       UnraidViewWeb.Endpoint
     ]

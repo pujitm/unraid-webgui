@@ -87,6 +87,7 @@ defmodule UnraidViewWeb do
       # Core UI components
       import UnraidViewWeb.CoreComponents
       import UnraidViewWeb.RichTableComponents
+      import UnraidViewWeb.TerminalComponents
 
       # Common modules used in templates
       alias Phoenix.LiveView.JS
