@@ -92,6 +92,7 @@ if (process.env.NODE_ENV === "development") {
 //
 // Notably, data-on-<event> does not allow arbitrary JS, only the Phoenix.LiveView.JS DSL.
 const originalDispatchEvent = window.dispatchEvent.bind(window)
+const dispatchErrorsSeen = new Set()
 
 // Lifecycle note: this implementation dispatches after the original dispatch, rather than before it.
 window.dispatchEvent = function (event) {
@@ -100,17 +101,29 @@ window.dispatchEvent = function (event) {
   if (event.type.startsWith("phx:")) {
     const name = event.type.slice("phx:".length)
 
-    document
-      .querySelectorAll(`[data-on-${name}]`)
-      .forEach((el) => {
-        const js = el.getAttribute(`data-on-${name}`)
-        if (!js) return
+    // Skip events with colons - these are hook-specific events (e.g., rich-table:pulse)
+    // that are handled by their respective hooks, not the generic data-on-* system
+    if (name.includes(":")) {
+      return result
+    }
 
-        // optional: gate on event.detail.id, etc.
-        liveSocket.execJS(el, js)
-      })
+    try {
+      document
+        .querySelectorAll(`[data-on-${name}]`)
+        .forEach((el) => {
+          const js = el.getAttribute(`data-on-${name}`)
+          if (!js) return
+
+          // optional: gate on event.detail.id, etc.
+          liveSocket.execJS(el, js)
+        })
+    } catch (error) {
+      if (liveSocket.isDebugEnabled() && !dispatchErrorsSeen.has(name)) {
+        console.debug(`Error executing JS for event ${name}`, event, error);
+        dispatchErrorsSeen.add(name)
+      }
+    }
   }
-
   return result
 }
 

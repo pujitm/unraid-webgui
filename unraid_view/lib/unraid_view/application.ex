@@ -14,6 +14,9 @@ defmodule UnraidView.Application do
       # Start a worker by calling: UnraidView.Worker.start_link(arg)
       # {UnraidView.Worker, arg},
       {UnraidView.Monitoring.CPUPoller, []},
+      # Docker streaming services
+      {UnraidView.Docker.StatsStreamer, []},
+      {UnraidView.Docker.EventsStreamer, []},
       # Start to serve requests, typically the last entry
       UnraidViewWeb.Endpoint
     ]
