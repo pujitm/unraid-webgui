@@ -1,5 +1,8 @@
 import Config
 
+# Mark test environment for conditional behavior
+config :unraid_view, env: :test
+
 # We don't run a server during test. If one is required,
 # you can enable the server option below.
 config :unraid_view, UnraidViewWeb.Endpoint,

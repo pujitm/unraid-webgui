@@ -3,17 +3,21 @@ defmodule UnraidViewWeb.RichTableDemoLiveTest do
 
   import Phoenix.LiveViewTest
 
+  # The RichTableDemoLive has a 200ms interval timer that causes :sys.get_state()
+  # to be very slow. We use a longer timeout and avoid repeated render() calls.
+
   test "renders the demo table and reacts to interactions", %{conn: conn} do
     {:ok, view, html} = live_isolated(conn, UnraidViewWeb.RichTableDemoLive)
 
     assert html =~ "Rich Table Demo"
     assert has_element?(view, "#rich-table-demo")
 
-    view
-    |> element("button[phx-value-id='production']")
-    |> render_click()
+    result =
+      view
+      |> element("button[phx-value-id='production']")
+      |> render_click()
 
-    assert render(view) =~ "Pin toggled"
+    assert result =~ "Pin toggled"
   end
 
   test "reorders rows when drop events fire", %{conn: conn} do
@@ -38,23 +42,23 @@ defmodule UnraidViewWeb.RichTableDemoLiveTest do
   end
 
   test "selection label reflects selection_changed events", %{conn: conn} do
-    {:ok, view, _html} = live_isolated(conn, UnraidViewWeb.RichTableDemoLive)
+    {:ok, view, html} = live_isolated(conn, UnraidViewWeb.RichTableDemoLive)
 
-    assert render(view) =~ "No rows selected"
+    assert html =~ "No rows selected"
 
-    render_hook(view, "demo:selection_changed", %{"selected_ids" => ["production"]})
-    assert render(view) =~ "1 row selected"
+    html = render_hook(view, "demo:selection_changed", %{"selected_ids" => ["production"]})
+    assert html =~ "1 row selected"
 
-    render_hook(view, "demo:selection_changed", %{
-      "selected_ids" => ["production", "analytics"]
-    })
+    html =
+      render_hook(view, "demo:selection_changed", %{
+        "selected_ids" => ["production", "analytics"]
+      })
 
-    assert render(view) =~ "2 rows selected"
+    assert html =~ "2 rows selected"
 
-    render_hook(view, "demo:selection_changed", %{"selected_ids" => []})
-    assert render(view) =~ "No rows selected"
+    html = render_hook(view, "demo:selection_changed", %{"selected_ids" => []})
+    assert html =~ "No rows selected"
   end
-
 
   defp top_level_ids(view) do
     live_assign(view, :demo_rows)
@@ -79,8 +83,10 @@ defmodule UnraidViewWeb.RichTableDemoLiveTest do
   end
 
   defp live_assign(view, key) do
-    view.pid
-    |> :sys.get_state()
+    # Use :sys.get_state with a timeout since the LiveView has a fast timer
+    state = :sys.get_state(view.pid, 5_000)
+
+    state
     |> Map.fetch!(:socket)
     |> Map.fetch!(:assigns)
     |> Map.fetch!(key)
