@@ -109,10 +109,11 @@
   --rich-table-indent-size: 16px;
   --rich-table-header-bg: color-mix(in srgb, var(--color-base-200) 80%, transparent);
   --rich-table-border-color: var(--color-base-300);
+  overflow: visible;
 }
 
 .rich-table__scroll {
-  overflow: auto;
+  overflow: visible;
 }
 
 .rich-table__table {
@@ -205,6 +206,49 @@
 .rich-table__row--selected {
   background: color-mix(in srgb, var(--color-primary) 8%, var(--color-base-100));
 }
+
+.rich-table__row--pending {
+  opacity: 0.6;
+  pointer-events: none;
+  position: relative;
+}
+
+.rich-table__row--pending::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 8px,
+    color-mix(in srgb, var(--color-base-content) 5%, transparent) 8px,
+    color-mix(in srgb, var(--color-base-content) 5%, transparent) 16px
+  );
+  animation: rich-table-pending-stripes 1s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes rich-table-pending-stripes {
+  0% { background-position: 0 0; }
+  100% { background-position: 22.6px 0; }
+}
+
+/*
+ * State-based visibility for action menus (RichTable)
+ *
+ * Usage in HEEx:
+ *   <div data-row-actions data-state={@row.state}>
+ *     <li data-show-when="stopped">Start</li>
+ *     <li data-show-when="running">Stop</li>
+ *     <li data-show-when="running stopped">Restart</li>
+ *   </div>
+ *
+ * The RichTable hook updates data-state and toggles visibility via JS
+ * when pulse updates include a `state` field.
+ *
+ * Initial visibility is controlled by Elixir's :if, but after that
+ * JS handles dynamic updates without re-rendering.
+ */
 
 .rich-table__row:last-child {
   border-bottom: none;

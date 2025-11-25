@@ -21,6 +21,14 @@ defmodule UnraidViewWeb.Router do
     live "/event-demo", EventDemoLive
   end
 
+  scope "/", UnraidViewWeb do
+    pipe_through :browser
+
+    live_session :dashboard, layout: {UnraidViewWeb.Layouts, :wide} do
+      live "/docker", DockerLive
+    end
+  end
+
   # Other scopes may use custom stacks.
   # scope "/api", UnraidViewWeb do
   #   pipe_through :api

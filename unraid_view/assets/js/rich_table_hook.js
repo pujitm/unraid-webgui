@@ -99,7 +99,10 @@ export default {
     event.stopPropagation()
 
     const minWidth = parseInt(th.dataset.minWidth || "120", 10)
-    const startWidth = th.offsetWidth
+    // Read the CSS width from inline style if available, otherwise use computed width
+    // This prevents jumps when content forces column wider than its set width
+    const inlineWidth = th.style.width ? parseInt(th.style.width, 10) : null
+    const startWidth = inlineWidth || th.getBoundingClientRect().width
     const startX = event.clientX
     let resizeState = null
 
@@ -988,9 +991,29 @@ export default {
       return
     }
 
-    this.setFieldText(rowElement, "description", row.description)
-    this.setFieldText(rowElement, "updated_at", row.updated_at)
-    this.setStatusField(rowElement, row)
+    // Handle pending state (loading indicator)
+    if (row.pending !== undefined) {
+      this.setRowPendingState(rowElement, row.pending, row.pending_action)
+    }
+
+    // Update any field present in the payload that has a matching data-row-field element
+    Object.keys(row).forEach((key) => {
+      if (["id", "pending", "pending_action", "state_label", "state_class"].includes(key)) return
+      this.setFieldText(rowElement, key, row[key])
+    })
+
+    // Handle state field updates (for badge styling)
+    this.setStateField(rowElement, row)
+  },
+
+  setRowPendingState(rowElement, isPending, action) {
+    if (isPending) {
+      rowElement.classList.add("rich-table__row--pending")
+      rowElement.dataset.pendingAction = action || ""
+    } else {
+      rowElement.classList.remove("rich-table__row--pending")
+      delete rowElement.dataset.pendingAction
+    }
   },
 
   setFieldText(rowElement, field, value) {
@@ -1004,23 +1027,44 @@ export default {
     }
   },
 
-  setStatusField(rowElement, row) {
-    const statusEl = rowElement.querySelector('[data-row-field="status"]')
-    if (!statusEl) {
-      return
+  setStateField(rowElement, row) {
+    const stateEl = rowElement.querySelector('[data-row-field="state"]')
+    if (stateEl) {
+      if (row.state_label && stateEl.textContent !== row.state_label) {
+        stateEl.textContent = row.state_label
+      }
+
+      if (row.state_class) {
+        // Preserve badge and badge-sm, replace the color class
+        stateEl.className = `badge badge-sm ${row.state_class}`
+      }
+
+      if (row.state) {
+        stateEl.dataset.state = row.state
+      }
     }
 
-    if (row.status_label && statusEl.textContent !== row.status_label) {
-      statusEl.textContent = row.status_label
+    // Update action menu state and visibility
+    if (row.state) {
+      const actionsEl = rowElement.querySelector('[data-row-actions]')
+      if (actionsEl) {
+        actionsEl.dataset.state = row.state
+        this.updateActionVisibility(actionsEl, row.state)
+      }
     }
+  },
 
-    if (row.status_class) {
-      statusEl.className = `badge badge-sm text-xs tracking-tight ${row.status_class}`
-    }
-
-    if (row.status) {
-      statusEl.dataset.status = row.status
-    }
+  /**
+   * Update visibility of action menu items based on state.
+   * Items with data-show-when="state1 state2" are shown if current state matches any.
+   */
+  updateActionVisibility(actionsEl, currentState) {
+    const items = actionsEl.querySelectorAll('[data-show-when]')
+    items.forEach((item) => {
+      const showWhen = item.dataset.showWhen.split(/\s+/)
+      const shouldShow = showWhen.includes(String(currentState))
+      item.style.display = shouldShow ? '' : 'none'
+    })
   },
 
   pushTableEvent(eventName, payload) {
