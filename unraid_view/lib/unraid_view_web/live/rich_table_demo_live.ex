@@ -44,6 +44,7 @@ defmodule UnraidViewWeb.RichTableDemoLive do
   use UnraidViewWeb, :live_view
 
   alias Phoenix.LiveView.JS
+  alias UnraidView.Tree
 
   @tick_interval 200
   @status_cycle [:healthy, :warning, :offline]
@@ -51,11 +52,14 @@ defmodule UnraidViewWeb.RichTableDemoLive do
   @table_dom_id "rich-table-demo"
   @pulse_chunk_size 50
 
+  # Skip stress rows and timer in test environment for faster tests
+  defp test_env?, do: Application.get_env(:unraid_view, :env) == :test
+
   @impl true
   def mount(_params, _session, socket) do
     rows = demo_rows()
 
-    if connected?(socket), do: :timer.send_interval(@tick_interval, :demo_tick)
+    if connected?(socket) and not test_env?(), do: :timer.send_interval(@tick_interval, :demo_tick)
 
     {:ok,
      socket
@@ -64,7 +68,7 @@ defmodule UnraidViewWeb.RichTableDemoLive do
      |> assign(:interaction_log, [])
      |> assign(:demo_cycle, 0)
      |> assign(:demo_dragging?, false)
-     |> assign(:demo_row_ids, collect_row_ids(rows))
+     |> assign(:demo_row_ids, Tree.collect_ids(rows))
      |> assign(:demo_selected_ids, MapSet.new())
      |> assign(:demo_cursor, 0)}
   end
@@ -230,9 +234,9 @@ defmodule UnraidViewWeb.RichTableDemoLive do
   def handle_event("demo:row_dropped", params, socket) do
     detail = describe_row_drop(params)
 
-    case update_rows_for_drop(socket.assigns.demo_state, params) do
+    case Tree.apply_drop(socket.assigns.demo_state, params) do
       {:ok, updated_rows} ->
-        new_row_ids = collect_row_ids(updated_rows)
+        new_row_ids = Tree.collect_ids(updated_rows)
 
         selection =
           socket.assigns.demo_selected_ids
@@ -384,7 +388,11 @@ defmodule UnraidViewWeb.RichTableDemoLive do
   @stress_children_per_group 16
 
   defp demo_rows do
-    base_demo_rows() ++ stress_rows()
+    if test_env?() do
+      base_demo_rows()
+    else
+      base_demo_rows() ++ stress_rows()
+    end
   end
 
   defp base_demo_rows do
@@ -562,16 +570,6 @@ defmodule UnraidViewWeb.RichTableDemoLive do
     {selection, next_cursor}
   end
 
-  defp collect_row_ids(rows) when is_list(rows) do
-    Enum.flat_map(rows, &collect_row_ids/1)
-  end
-
-  defp collect_row_ids(%{id: id} = row) do
-    [id | collect_row_ids(Map.get(row, :children, []))]
-  end
-
-  defp collect_row_ids(_), do: []
-
   defp now_timestamp do
     Calendar.strftime(DateTime.utc_now(), "%H:%M:%S UTC")
   end
@@ -600,272 +598,4 @@ defmodule UnraidViewWeb.RichTableDemoLive do
 
   defp pluralize_rows(1), do: "row"
   defp pluralize_rows(_), do: "rows"
-
-  defp update_rows_for_drop(rows, %{"source_ids" => source_ids} = params)
-       when is_list(source_ids) and source_ids != [] do
-    ids = Enum.uniq(source_ids)
-
-    case take_rows(rows, ids) do
-      {:error, _} = error ->
-        error
-
-      {trimmed_rows, nodes} ->
-        target_id = Map.get(params, "target_id")
-
-        with :ok <- validate_multi_drop(nodes, target_id),
-             {:ok, updated} <- insert_multiple(trimmed_rows, nodes, params) do
-          {:ok, updated}
-        else
-          {:error, reason} -> {:error, reason}
-        end
-    end
-  end
-
-  defp update_rows_for_drop(rows, %{"source_id" => source_id} = params) do
-    action = Map.get(params, "action", "end")
-    target_id = Map.get(params, "target_id")
-
-    {trimmed_rows, source_node} = take_row(rows, source_id)
-
-    cond do
-      is_nil(source_node) ->
-        {:error, "Row #{source_id} was not found"}
-
-      target_id && source_id == target_id ->
-        {:error, "Cannot drop a row onto itself"}
-
-      target_id && descendant?(source_node, target_id) ->
-        {:error, "Cannot move a folder into its descendant"}
-
-      true ->
-        node = ensure_children(source_node)
-
-        case action do
-          "before" -> insert_relative(trimmed_rows, target_id, node, :before)
-          "after" -> insert_relative(trimmed_rows, target_id, node, :after)
-          "into" -> insert_into_parent(trimmed_rows, target_id, node)
-          "end" -> append_to_root(trimmed_rows, node)
-          _ -> append_to_root(trimmed_rows, node)
-        end
-    end
-  end
-
-  defp update_rows_for_drop(rows, _params), do: {:ok, rows}
-
-  defp validate_multi_drop(_nodes, nil), do: :ok
-
-  defp validate_multi_drop(nodes, target_id) do
-    cond do
-      Enum.any?(nodes, &(&1.id == target_id)) ->
-        {:error, "Cannot drop a row onto itself"}
-
-      Enum.any?(nodes, &descendant?(&1, target_id)) ->
-        {:error, "Cannot move a folder into its descendant"}
-
-      true ->
-        :ok
-    end
-  end
-
-  defp descendant?(nil, _target_id), do: false
-
-  defp descendant?(node, target_id) do
-    Enum.any?(Map.get(node, :children, []) || [], fn child ->
-      child.id == target_id || descendant?(child, target_id)
-    end)
-  end
-
-  defp ensure_children(nil), do: nil
-
-  defp ensure_children(row) do
-    Map.update(row, :children, [], fn
-      nil -> []
-      children -> children
-    end)
-  end
-
-  defp take_row(rows, target_id) do
-    do_take_row(rows, target_id, [])
-  end
-
-  defp take_rows(rows, ids) do
-    ids
-    |> Enum.reduce_while({rows, []}, fn id, {acc_rows, acc_nodes} ->
-      {next_rows, node} = take_row(acc_rows, id)
-
-      if is_nil(node) do
-        {:halt, {:error, "Row #{id} was not found"}}
-      else
-        {:cont, {next_rows, [node | acc_nodes]}}
-      end
-    end)
-    |> case do
-      {:error, _} = error -> error
-      {remaining, nodes} -> {remaining, Enum.reverse(nodes)}
-    end
-  end
-
-  defp do_take_row([], _target_id, acc), do: {Enum.reverse(acc), nil}
-
-  defp do_take_row([row | rest], target_id, acc) do
-    cond do
-      row.id == target_id ->
-        {Enum.reverse(acc) ++ rest, ensure_children(row)}
-
-      true ->
-        {new_children, found} = do_take_row(Map.get(row, :children, []) || [], target_id, [])
-
-        if found do
-          updated_row = Map.put(row, :children, new_children)
-          {Enum.reverse(acc) ++ [updated_row | rest], found}
-        else
-          do_take_row(rest, target_id, [row | acc])
-        end
-    end
-  end
-
-  defp insert_relative(_rows, nil, _node, _pos), do: {:error, "Target row missing"}
-
-  defp insert_relative(rows, target_id, node, pos) do
-    case do_insert_relative(rows, target_id, node, pos) do
-      {:ok, updated} -> {:ok, updated}
-      :error -> {:error, "Target row missing"}
-    end
-  end
-
-  defp do_insert_relative([], _target_id, _node, _pos), do: :error
-
-  defp do_insert_relative([row | rest], target_id, node, pos) do
-    cond do
-      row.id == target_id ->
-        inserted =
-          case pos do
-            :before -> [node, row | rest]
-            :after -> [row, node | rest]
-          end
-
-        {:ok, inserted}
-
-      true ->
-        children = Map.get(row, :children, []) || []
-
-        case do_insert_relative(children, target_id, node, pos) do
-          {:ok, new_children} ->
-            updated_row = Map.put(row, :children, new_children)
-            {:ok, [updated_row | rest]}
-
-          :error ->
-            case do_insert_relative(rest, target_id, node, pos) do
-              {:ok, updated_rest} ->
-                {:ok, [row | updated_rest]}
-
-              :error ->
-                :error
-            end
-        end
-    end
-  end
-
-  defp insert_into_parent(_rows, nil, _node), do: {:error, "Target row missing"}
-
-  defp insert_into_parent(rows, target_id, node) do
-    case do_insert_into_parent(rows, target_id, node) do
-      {:ok, updated} -> {:ok, updated}
-      :error -> {:error, "Target row missing"}
-    end
-  end
-
-  defp do_insert_into_parent([], _target_id, _node), do: :error
-
-  defp do_insert_into_parent([row | rest], target_id, node) do
-    cond do
-      row.id == target_id ->
-        children = Map.get(row, :children, []) || []
-
-        updated_row =
-          row
-          |> Map.put(:type, :folder)
-          |> Map.put(:children, children ++ [node])
-
-        {:ok, [updated_row | rest]}
-
-      true ->
-        children = Map.get(row, :children, []) || []
-
-        case do_insert_into_parent(children, target_id, node) do
-          {:ok, new_children} ->
-            updated_row = Map.put(row, :children, new_children)
-            {:ok, [updated_row | rest]}
-
-          :error ->
-            case do_insert_into_parent(rest, target_id, node) do
-              {:ok, updated_rest} ->
-                {:ok, [row | updated_rest]}
-
-              :error ->
-                :error
-            end
-        end
-    end
-  end
-
-  defp insert_multiple(rows, nodes, params) do
-    case Map.get(params, "action", "end") do
-      "before" ->
-        insert_rows_before(rows, Enum.reverse(nodes), Map.get(params, "target_id"))
-
-      "after" ->
-        insert_rows_after(rows, nodes, Map.get(params, "target_id"))
-
-      "into" ->
-        insert_rows_into_parent(rows, nodes, Map.get(params, "target_id"))
-
-      _ ->
-        append_rows_to_root(rows, nodes)
-    end
-  end
-
-  defp insert_rows_before(_rows, _nodes, nil), do: {:error, "Target row missing"}
-
-  defp insert_rows_before(rows, [], _target_id), do: {:ok, rows}
-
-  defp insert_rows_before(rows, [node | rest], target_id) do
-    case insert_relative(rows, target_id, node, :before) do
-      {:ok, updated} -> insert_rows_before(updated, rest, target_id)
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
-  defp insert_rows_after(_rows, _nodes, nil), do: {:error, "Target row missing"}
-
-  defp insert_rows_after(rows, nodes, target_id), do: do_insert_rows_after(rows, nodes, target_id)
-
-  defp do_insert_rows_after(rows, [], _anchor_id), do: {:ok, rows}
-
-  defp do_insert_rows_after(rows, [node | rest], anchor_id) do
-    case insert_relative(rows, anchor_id, node, :after) do
-      {:ok, updated} -> do_insert_rows_after(updated, rest, node.id)
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
-  defp insert_rows_into_parent(_rows, _nodes, nil), do: {:error, "Target row missing"}
-
-  defp insert_rows_into_parent(rows, [], _target_id), do: {:ok, rows}
-
-  defp insert_rows_into_parent(rows, [node | rest], target_id) do
-    case insert_into_parent(rows, target_id, node) do
-      {:ok, updated} -> insert_rows_into_parent(updated, rest, target_id)
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
-  defp append_rows_to_root(rows, []), do: {:ok, rows}
-
-  defp append_rows_to_root(rows, [node | rest]) do
-    {:ok, updated} = append_to_root(rows, node)
-    append_rows_to_root(updated, rest)
-  end
-
-  defp append_to_root(rows, node), do: {:ok, rows ++ [node]}
 end

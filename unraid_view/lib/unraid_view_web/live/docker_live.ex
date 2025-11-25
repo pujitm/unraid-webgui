@@ -29,6 +29,7 @@ defmodule UnraidViewWeb.DockerLive do
 
   alias UnraidView.Docker
   alias UnraidView.Docker.StatsStreamer
+  alias UnraidView.Tree
 
   @table_id "docker-containers-table"
 
@@ -47,6 +48,7 @@ defmodule UnraidViewWeb.DockerLive do
       |> assign(:logs_panel_open, false)
       |> assign(:logs_container, nil)
       |> assign(:logs_content, [])
+      |> assign(:dragging?, false)
 
     if connected?(socket) do
       Docker.subscribe()
@@ -145,6 +147,8 @@ defmodule UnraidViewWeb.DockerLive do
             selectable={true}
             selected_row_ids={MapSet.to_list(@selected_ids)}
             selection_event="selection_changed"
+            row_drop_event="docker:row_dropped"
+            row_drag_event="docker:row_drag"
             phx-update="ignore"
           >
             <:col :let={slot} id="name" label="Container" width={260}>
@@ -362,26 +366,31 @@ defmodule UnraidViewWeb.DockerLive do
 
   @impl true
   def handle_info({:stats_updated, stats}, socket) do
-    # Update stats cache
-    stats_map = Map.new(stats, &{&1.id, &1})
-    new_cache = Map.merge(socket.assigns.stats_cache, stats_map)
+    # Skip stats updates while dragging to prevent DOM shifts
+    if socket.assigns.dragging? do
+      {:noreply, socket}
+    else
+      # Update stats cache
+      stats_map = Map.new(stats, &{&1.id, &1})
+      new_cache = Map.merge(socket.assigns.stats_cache, stats_map)
 
-    # Push to client for DOM patching
-    diffs =
-      Enum.map(stats, fn s ->
-        %{
-          id: s.id,
-          cpu: format_cpu(s.cpu_percent),
-          memory: s.memory_usage
-        }
-      end)
+      # Push to client for DOM patching
+      diffs =
+        Enum.map(stats, fn s ->
+          %{
+            id: s.id,
+            cpu: format_cpu(s.cpu_percent),
+            memory: s.memory_usage
+          }
+        end)
 
-    socket =
-      socket
-      |> assign(:stats_cache, new_cache)
-      |> push_event("rich-table:pulse", %{target: @table_id, rows: diffs})
+      socket =
+        socket
+        |> assign(:stats_cache, new_cache)
+        |> push_event("rich-table:pulse", %{target: @table_id, rows: diffs})
 
-    {:noreply, socket}
+      {:noreply, socket}
+    end
   end
 
   @impl true
@@ -560,6 +569,37 @@ defmodule UnraidViewWeb.DockerLive do
   @impl true
   def handle_event("rich_table:column_reordered", _params, socket) do
     {:noreply, socket}
+  end
+
+  # Drag & drop reordering/nesting
+  @impl true
+  def handle_event("docker:row_drag", %{"state" => "start"}, socket) do
+    {:noreply, assign(socket, :dragging?, true)}
+  end
+
+  def handle_event("docker:row_drag", %{"state" => "end"}, socket) do
+    {:noreply, assign(socket, :dragging?, false)}
+  end
+
+  @impl true
+  def handle_event("docker:row_dropped", params, socket) do
+    case Tree.apply_drop(socket.assigns.containers, params) do
+      {:ok, updated_containers} ->
+        # Update selection to only include valid container IDs
+        valid_ids = Tree.collect_ids(updated_containers)
+
+        selected =
+          socket.assigns.selected_ids
+          |> MapSet.intersection(MapSet.new(valid_ids))
+
+        {:noreply,
+         socket
+         |> assign(:containers, updated_containers)
+         |> assign(:selected_ids, selected)}
+
+      {:error, _reason} ->
+        {:noreply, socket}
+    end
   end
 
   # ---------------------------------------------------------------------------
