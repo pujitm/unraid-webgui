@@ -1,3 +1,5 @@
+import {RichTableSearch} from "./rich_table_search"
+
 const DROP_ZONE_RATIO = 0.25
 const DROP_MODES = {
   BEFORE: "before",
@@ -26,8 +28,18 @@ export default {
     this.selectionEvent = this.el.dataset.selectionEvent || null
     this.touchDragState = null
 
+    // Search state
+    this.searchable = this.el.dataset.searchable === "true"
+    this.searcher = null
+    this.searchQuery = ""
+    this.searchMatchingIds = null // null = show all
+
     this.setup()
     this.handleEvent("rich-table:pulse", (payload) => this.applyPulseUpdates(payload))
+
+    // Listen for search events from external search inputs
+    this._searchHandler = (e) => this.handleSearchEvent(e)
+    window.addEventListener("rich-table:search", this._searchHandler)
   },
 
   updated() {
@@ -37,6 +49,10 @@ export default {
   destroyed() {
     this.teardownColumnResize()
     this.teardownTouchDrag()
+    if (this._searchHandler) {
+      window.removeEventListener("rich-table:search", this._searchHandler)
+      this._searchHandler = null
+    }
   },
 
   setup() {
@@ -52,11 +68,13 @@ export default {
       all: this.el.dataset.selectionLabelAll || ""
     }
     this.lastSelectionBroadcast = null
+    this.searchable = this.el.dataset.searchable === "true"
     this.ensureColumnOrder()
     this.initColumnResizing()
     this.initColumnReordering()
     this.initRowDragging()
     this.initRowSelection()
+    this.initSearch()
   },
 
   refreshDomRefs() {
@@ -1122,6 +1140,11 @@ export default {
     }
 
     payload.rows.forEach((row) => this.updateRowFromPulse(row))
+
+    // Re-apply search visibility after pulse updates
+    if (this.searchMatchingIds !== null) {
+      this.applySearchVisibility()
+    }
   },
 
   updateRowFromPulse(row) {
@@ -1139,9 +1162,17 @@ export default {
       this.setRowPendingState(rowElement, row.pending, row.pending_action)
     }
 
+    // Update search text if provided
+    if (row.search_text !== undefined && this.searchable) {
+      rowElement.dataset.searchText = row.search_text
+      if (this.searcher) {
+        this.searcher.updateRowSearchText(row.id, row.search_text)
+      }
+    }
+
     // Update any field present in the payload that has a matching data-row-field element
     Object.keys(row).forEach((key) => {
-      if (["id", "pending", "pending_action", "state_label", "state_class"].includes(key)) return
+      if (["id", "pending", "pending_action", "state_label", "state_class", "search_text"].includes(key)) return
       this.setFieldText(rowElement, key, row[key])
     })
 
@@ -1233,6 +1264,111 @@ export default {
       state,
       row_id: row ? row.dataset.rowId : null
     })
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Search functionality
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  initSearch() {
+    if (!this.searchable) {
+      this.searcher = null
+      return
+    }
+
+    // Initialize or rebuild the search index
+    if (!this.searcher) {
+      this.searcher = new RichTableSearch()
+    }
+    this.searcher.buildIndex(this.el)
+
+    // Re-apply current search if active
+    if (this.searchQuery) {
+      this.applySearch(this.searchQuery)
+    }
+  },
+
+  handleSearchEvent(event) {
+    const {target, query} = event.detail || {}
+
+    // Only handle events targeting this table
+    if (target !== this.el.id) {
+      return
+    }
+
+    this.applySearch(query || "")
+  },
+
+  applySearch(query) {
+    this.searchQuery = query.trim()
+
+    if (!this.searchQuery) {
+      this.clearSearch()
+      return
+    }
+
+    if (!this.searcher) {
+      return
+    }
+
+    // Get matching row IDs from Fuse.js
+    this.searchMatchingIds = this.searcher.search(this.searchQuery)
+    this.applySearchVisibility()
+  },
+
+  clearSearch() {
+    this.searchQuery = ""
+    this.searchMatchingIds = null
+
+    // Show all rows
+    this.getAllRows().forEach((row) => {
+      row.classList.remove("rich-table__row--search-hidden")
+    })
+
+    this.dispatchSearchResult(null, this.getAllRows().length)
+  },
+
+  applySearchVisibility() {
+    const rows = this.getAllRows()
+    let visibleCount = 0
+
+    rows.forEach((row) => {
+      const rowId = row.dataset.rowId
+      const isVisible = this.searchMatchingIds === null || this.searchMatchingIds.has(rowId)
+
+      if (isVisible) {
+        row.classList.remove("rich-table__row--search-hidden")
+        visibleCount++
+      } else {
+        row.classList.add("rich-table__row--search-hidden")
+      }
+    })
+
+    this.dispatchSearchResult(visibleCount, rows.length)
+  },
+
+  dispatchSearchResult(visible, total) {
+    window.dispatchEvent(
+      new CustomEvent("rich-table:search-result", {
+        detail: {
+          tableId: this.el.id,
+          visible: visible,
+          total: total,
+          query: this.searchQuery
+        }
+      })
+    )
+  },
+
+  rebuildSearchIndex() {
+    if (this.searchable && this.searcher) {
+      this.searcher.buildIndex(this.el)
+      // Re-apply current search
+      if (this.searchQuery) {
+        this.searchMatchingIds = this.searcher.search(this.searchQuery)
+        this.applySearchVisibility()
+      }
+    }
   }
 }
 
