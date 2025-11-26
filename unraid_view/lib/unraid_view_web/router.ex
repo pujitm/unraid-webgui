@@ -28,6 +28,7 @@ defmodule UnraidViewWeb.Router do
       live "/docker", DockerLive
       live "/docker/card", DockerCardDemoLive
       live "/terminal", TerminalLive
+      live "/vms", VmLive
     end
   end
 

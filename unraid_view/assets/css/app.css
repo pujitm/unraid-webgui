@@ -388,23 +388,22 @@
 }
 
 /* -------------------------------------------------------------------------- */
-/* Rich card component                                                        */
+/* Card List Component (composable primitives)                                 */
 /* -------------------------------------------------------------------------- */
 
-.rich-card-list {
-  --rich-card-indent-size: 24px;
+.card-list {
+  --card-indent-size: 24px;
 }
 
-/* Column headers row */
-.rich-card__col-headers {
+.card-list__col-headers {
   display: flex;
   align-items: center;
   padding: 0 1rem 0.5rem 1rem;
-  /* Account for: checkbox (1.1rem) + gap (0.75rem) + drag handle (1.25rem) + gap (0.75rem) */
-  padding-left: calc(1rem + 1.1rem + 0.75rem + 1.25rem + 0.75rem);
+  /* Account for: expand (1.5rem) + select (1rem) + drag (1.25rem) + gaps */
+  padding-left: calc(1rem + 1.5rem + 0.75rem + 1rem + 0.75rem + 1.25rem + 0.75rem);
 }
 
-.rich-card__col-header {
+.card-list__col-header {
   font-size: 0.7rem;
   font-weight: 500;
   text-transform: uppercase;
@@ -412,295 +411,48 @@
   color: color-mix(in srgb, var(--color-base-content) 50%, transparent);
 }
 
-.rich-card__container {
+.card-list__container {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
-}
-
-.rich-card {
-  --rich-card-depth: 0;
-  margin-left: calc(var(--rich-card-depth) * var(--rich-card-indent-size));
-  transition: margin-left 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
-  box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.05), 0 1px 2px -1px rgb(0 0 0 / 0.05);
-}
-
-.rich-card__inner {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.875rem 1rem;
-}
-
-.rich-card__expand-toggle {
-  flex-shrink: 0;
-  width: 1.5rem;
-  height: 1.5rem;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 0.375rem;
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  color: color-mix(in srgb, var(--color-base-content) 50%, transparent);
-  transition: background 0.12s ease, color 0.12s ease;
-}
-
-.rich-card__expand-toggle:hover {
-  background: color-mix(in srgb, var(--color-base-content) 10%, transparent);
-  color: var(--color-base-content);
-}
-
-.rich-card__selection {
-  flex-shrink: 0;
-}
-
-.rich-card__selection-checkbox {
-  width: 1.1rem;
-  height: 1.1rem;
-  accent-color: var(--color-primary);
-  cursor: pointer;
-}
-
-.rich-card__selection-checkbox:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--color-primary) 60%, transparent);
-  outline-offset: 2px;
-}
-
-.rich-card__drag-handle {
-  flex-shrink: 0;
-  width: 1.25rem;
-  height: 1.25rem;
-  border-radius: 999px;
-  border: 1px solid transparent;
-  background: transparent;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: grab;
-  user-select: none;
-  color: color-mix(in srgb, var(--color-base-content) 35%, transparent);
-  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
-  touch-action: none;
-}
-
-@media (pointer: coarse) {
-  .rich-card__drag-handle {
-    width: 2.5rem;
-    height: 2.5rem;
-    margin: -0.5rem;
-    margin-right: 0;
-  }
-}
-
-.rich-card__drag-handle span {
-  width: 0.45rem;
-  height: 0.45rem;
-  border-radius: 0.1rem;
-  border: 1px dashed currentColor;
-  opacity: 0.8;
-}
-
-.rich-card__drag-handle:hover,
-.rich-card__drag-handle:focus-visible {
-  color: color-mix(in srgb, var(--color-base-content) 70%, transparent);
-  background: color-mix(in srgb, var(--color-base-content) 8%, transparent);
-  border-color: color-mix(in srgb, var(--color-base-content) 15%, transparent);
-}
-
-.rich-card__drag-handle:active {
-  cursor: grabbing;
-}
-
-.rich-card__header {
-  flex: 1;
-  min-width: 0;
-}
-
-.rich-card__metrics {
-  display: flex;
-  gap: 1.5rem;
-  flex-shrink: 0;
-}
-
-.rich-card__metric {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  min-width: 3rem;
-}
-
-.rich-card__metric-label {
-  font-size: 0.65rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: color-mix(in srgb, var(--color-base-content) 50%, transparent);
-}
-
-.rich-card__metric-value {
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-  font-size: 0.875rem;
-  font-weight: 400;
-}
-
-.rich-card__status {
-  flex-shrink: 0;
-  min-width: 6rem;
-}
-
-/* Status badge with dot indicator */
-.rich-card__status-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.375rem;
-  padding: 0.25rem 0.625rem;
-  border-radius: 9999px;
-  font-size: 0.75rem;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-  border: 1px solid transparent;
-}
-
-.rich-card__status-dot {
-  width: 0.5rem;
-  height: 0.5rem;
-  border-radius: 9999px;
-  flex-shrink: 0;
-}
-
-/* Status badge colors */
-.rich-card__status-badge--running {
-  color: var(--color-success);
-  background: color-mix(in srgb, var(--color-success) 10%, transparent);
-  border-color: color-mix(in srgb, var(--color-success) 20%, transparent);
-}
-
-.rich-card__status-badge--running .rich-card__status-dot {
-  background: var(--color-success);
-}
-
-.rich-card__status-badge--stopped {
-  color: var(--color-error);
-  background: color-mix(in srgb, var(--color-error) 10%, transparent);
-  border-color: color-mix(in srgb, var(--color-error) 20%, transparent);
-}
-
-.rich-card__status-badge--stopped .rich-card__status-dot {
-  background: var(--color-error);
-}
-
-.rich-card__status-badge--paused {
-  color: var(--color-warning);
-  background: color-mix(in srgb, var(--color-warning) 10%, transparent);
-  border-color: color-mix(in srgb, var(--color-warning) 20%, transparent);
-}
-
-.rich-card__status-badge--paused .rich-card__status-dot {
-  background: var(--color-warning);
-}
-
-.rich-card__status-badge--restarting {
-  color: var(--color-info);
-  background: color-mix(in srgb, var(--color-info) 10%, transparent);
-  border-color: color-mix(in srgb, var(--color-info) 20%, transparent);
-}
-
-.rich-card__status-badge--restarting .rich-card__status-dot {
-  background: var(--color-info);
-}
-
-.rich-card__status-badge--default {
-  color: color-mix(in srgb, var(--color-base-content) 60%, transparent);
-  background: color-mix(in srgb, var(--color-base-content) 8%, transparent);
-  border-color: color-mix(in srgb, var(--color-base-content) 15%, transparent);
-}
-
-.rich-card__status-badge--default .rich-card__status-dot {
-  background: color-mix(in srgb, var(--color-base-content) 40%, transparent);
-}
-
-.rich-card__actions {
-  display: flex;
-  align-items: center;
   gap: 0.5rem;
-  flex-shrink: 0;
 }
 
-.rich-card__avatar {
-  width: 2.5rem;
-  height: 2.5rem;
-  border-radius: 0.5rem;
-  background: var(--color-base-200);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-  flex-shrink: 0;
-}
-
-.rich-card__avatar-fallback {
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: color-mix(in srgb, var(--color-base-content) 50%, transparent);
-}
-
-/* Selected state */
-.rich-card--selected {
-  background: color-mix(in srgb, var(--color-primary) 6%, var(--color-base-100));
-  border-color: color-mix(in srgb, var(--color-primary) 25%, var(--color-base-300));
+.card-list__row {
+  --card-depth: 0;
+  margin-left: calc(var(--card-depth) * var(--card-indent-size));
+  transition: margin-left 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
 }
 
 /* Dragging state */
-.rich-card.is-dragging {
-  opacity: 0.6;
+.card-list__row.is-dragging {
+  opacity: 0.5;
 }
 
 /* Drop indicators */
-.rich-card--drop-before {
+.card-list__row--drop-before {
   box-shadow: inset 0 3px 0 0 var(--color-primary), 0 -8px 16px -8px color-mix(in srgb, var(--color-primary) 40%, transparent);
 }
 
-.rich-card--drop-after {
+.card-list__row--drop-after {
   box-shadow: inset 0 -3px 0 0 var(--color-primary), 0 8px 16px -8px color-mix(in srgb, var(--color-primary) 40%, transparent);
 }
 
-.rich-card--drop-into {
+.card-list__row--drop-into {
   outline: 2px dashed color-mix(in srgb, var(--color-primary) 80%, transparent);
   outline-offset: -4px;
 }
 
-/* Hidden (collapsed children) */
-.rich-card--hidden {
-  display: none;
+/* Selected state for card wrapper */
+.card--selected {
+  background: color-mix(in srgb, var(--color-primary) 6%, var(--color-base-100));
 }
 
-/* Pending state */
-.rich-card--pending {
-  opacity: 0.6;
-  pointer-events: none;
+/* Folder variant */
+.card--folder {
   position: relative;
 }
 
-.rich-card--pending::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: repeating-linear-gradient(
-    -45deg,
-    transparent,
-    transparent 8px,
-    color-mix(in srgb, var(--color-base-content) 5%, transparent) 8px,
-    color-mix(in srgb, var(--color-base-content) 5%, transparent) 16px
-  );
-  animation: rich-table-pending-stripes 1s linear infinite;
-  pointer-events: none;
-}
-
-/* Folder type indicator */
-.rich-card--folder::before {
+.card--folder::before {
   content: "";
   position: absolute;
   left: 0;
@@ -709,4 +461,14 @@
   width: 3px;
   background: color-mix(in srgb, var(--color-primary) 70%, transparent);
   border-radius: 2px 0 0 2px;
+}
+
+/* Touch-friendly drag handle */
+@media (pointer: coarse) {
+  .drag-handle {
+    width: 2.5rem;
+    height: 2.5rem;
+    margin: -0.5rem;
+    margin-right: 0;
+  }
 }

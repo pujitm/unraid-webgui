@@ -80,6 +80,7 @@ defmodule UnraidView.Tree do
   def apply_drop(tree, %{"source_id" => source_id} = params) do
     action = Map.get(params, "action", "end")
     target_id = Map.get(params, "target_id")
+    folder_name = Map.get(params, "folder_name")
 
     {trimmed, source_node} = take(tree, source_id)
 
@@ -89,7 +90,7 @@ defmodule UnraidView.Tree do
       case action do
         "before" -> insert_relative(trimmed, target_id, node, :before)
         "after" -> insert_relative(trimmed, target_id, node, :after)
-        "into" -> insert_into(trimmed, target_id, node)
+        "into" -> insert_into(trimmed, target_id, node, folder_name)
         "end" -> append(trimmed, node)
         _ -> append(trimmed, node)
       end
@@ -175,7 +176,10 @@ defmodule UnraidView.Tree do
   @doc """
   Insert a node as a child of a target node (nesting).
 
-  Automatically sets the target's `:type` to `:folder`.
+  If `folder_name` is provided and target is not already a folder, creates a new
+  folder with that name containing both the target and the source node.
+
+  Otherwise, automatically sets the target's `:type` to `:folder`.
 
   ## Examples
 
@@ -185,13 +189,23 @@ defmodule UnraidView.Tree do
       :folder
       iex> hd(updated).children
       [%{id: "c"}]
-  """
-  @spec insert_into(list(map()), String.t() | nil, map()) ::
-          {:ok, list(map())} | {:error, String.t()}
-  def insert_into(_tree, nil, _node), do: {:error, "Target not found"}
 
-  def insert_into(tree, target_id, node) do
-    case do_insert_into(tree, target_id, node) do
+      # With folder_name - creates new folder containing both items
+      iex> tree = [%{id: "a"}, %{id: "b"}]
+      iex> {:ok, updated} = Tree.insert_into(tree, "a", %{id: "c"}, "My Folder")
+      iex> hd(updated).name
+      "My Folder"
+      iex> length(hd(updated).children)
+      2
+  """
+  @spec insert_into(list(map()), String.t() | nil, map(), String.t() | nil) ::
+          {:ok, list(map())} | {:error, String.t()}
+  def insert_into(tree, target_id, node, folder_name \\ nil)
+
+  def insert_into(_tree, nil, _node, _folder_name), do: {:error, "Target not found"}
+
+  def insert_into(tree, target_id, node, folder_name) do
+    case do_insert_into(tree, target_id, node, folder_name) do
       {:ok, updated} -> {:ok, updated}
       :not_found -> {:error, "Target not found"}
     end
@@ -347,28 +361,53 @@ defmodule UnraidView.Tree do
   end
 
   # Insert as a child of the target (nesting)
-  defp do_insert_into([], _target_id, _node), do: :not_found
+  # If folder_name is provided and target is not a folder, create a new folder
+  # containing both target and source
+  defp do_insert_into([], _target_id, _node, _folder_name), do: :not_found
 
-  defp do_insert_into([current | rest], target_id, node) do
+  defp do_insert_into([current | rest], target_id, node, folder_name) do
     if get_id(current) == target_id do
-      children = get_children(current)
+      current_type = Map.get(current, :type) || Map.get(current, "type")
+      is_folder = current_type == :folder || current_type == "folder"
 
       updated =
-        current
-        |> Map.put(:type, :folder)
-        |> set_children(children ++ [node])
+        cond do
+          # Target is already a folder - add source as child
+          is_folder ->
+            children = get_children(current)
+
+            current
+            |> set_children(children ++ [node])
+
+          # folder_name provided - create new folder containing both items
+          folder_name && folder_name != "" ->
+            %{
+              id: generate_folder_id(),
+              name: folder_name,
+              type: :folder,
+              children: [current, node]
+            }
+
+          # No folder_name - convert target to folder (legacy behavior)
+          true ->
+            children = get_children(current)
+
+            current
+            |> Map.put(:type, :folder)
+            |> set_children(children ++ [node])
+        end
 
       {:ok, [updated | rest]}
     else
       children = get_children(current)
 
-      case do_insert_into(children, target_id, node) do
+      case do_insert_into(children, target_id, node, folder_name) do
         {:ok, new_children} ->
           updated = set_children(current, new_children)
           {:ok, [updated | rest]}
 
         :not_found ->
-          case do_insert_into(rest, target_id, node) do
+          case do_insert_into(rest, target_id, node, folder_name) do
             {:ok, updated_rest} -> {:ok, [current | updated_rest]}
             :not_found -> :not_found
           end
@@ -376,17 +415,24 @@ defmodule UnraidView.Tree do
     end
   end
 
+  defp generate_folder_id do
+    "folder-" <> (:crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower))
+  end
+
   # Insert multiple nodes based on action
   defp insert_multiple(tree, nodes, params) do
+    target_id = Map.get(params, "target_id")
+    folder_name = Map.get(params, "folder_name")
+
     case Map.get(params, "action", "end") do
       "before" ->
-        insert_many_before(tree, Enum.reverse(nodes), Map.get(params, "target_id"))
+        insert_many_before(tree, Enum.reverse(nodes), target_id)
 
       "after" ->
-        insert_many_after(tree, nodes, Map.get(params, "target_id"))
+        insert_many_after(tree, nodes, target_id)
 
       "into" ->
-        insert_many_into(tree, nodes, Map.get(params, "target_id"))
+        insert_many_into(tree, nodes, target_id, folder_name)
 
       _ ->
         {:ok, tree ++ nodes}
@@ -418,14 +464,41 @@ defmodule UnraidView.Tree do
     end
   end
 
-  defp insert_many_into(_tree, _nodes, nil), do: {:error, "Target not found"}
-  defp insert_many_into(tree, [], _target_id), do: {:ok, tree}
+  defp insert_many_into(_tree, _nodes, nil, _folder_name), do: {:error, "Target not found"}
+  defp insert_many_into(tree, [], _target_id, _folder_name), do: {:ok, tree}
 
-  defp insert_many_into(tree, [node | rest], target_id) do
-    case insert_into(tree, target_id, node) do
-      {:ok, updated} -> insert_many_into(updated, rest, target_id)
-      {:error, reason} -> {:error, reason}
+  defp insert_many_into(tree, [node | rest], target_id, folder_name) do
+    # Only use folder_name for the first insert (creates the folder)
+    # Subsequent inserts go into the already-created folder
+    case insert_into(tree, target_id, node, folder_name) do
+      {:ok, updated} ->
+        # After first insert with folder_name, the folder exists
+        # Find the new folder's ID to add remaining items to it
+        new_target_id =
+          if folder_name && folder_name != "" do
+            find_folder_containing(updated, target_id)
+          else
+            target_id
+          end
+
+        insert_many_into(updated, rest, new_target_id, nil)
+
+      {:error, reason} ->
+        {:error, reason}
     end
+  end
+
+  # Find the folder that contains a given item ID
+  defp find_folder_containing(tree, item_id) do
+    Enum.find_value(tree, fn node ->
+      children = get_children(node)
+
+      if Enum.any?(children, &(get_id(&1) == item_id)) do
+        get_id(node)
+      else
+        find_folder_containing(children, item_id)
+      end
+    end)
   end
 
   # Flexible field accessors for both atom and string keys

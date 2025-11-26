@@ -26,7 +26,7 @@ import topbar from "../vendor/topbar"
 import CpuChartHook from "./cpu_chart_hook"
 import ChartToggleHook from "./chart_toggle_hook"
 import RichTableHook from "./rich_table_hook"
-import RichCardHook from "./rich_card_hook"
+import CardListHook from "./card_list_hook"
 import TerminalHook from "./terminal_hook"
 
 /**
@@ -97,7 +97,7 @@ const Hooks = {
   CpuChart: CpuChartHook,
   ChartToggle: ChartToggleHook,
   RichTable: RichTableHook,
-  RichCard: RichCardHook,
+  CardList: CardListHook,
   RichTableSearchInput: RichTableSearchInputHook,
   Terminal: TerminalHook
 }
