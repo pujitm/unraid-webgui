@@ -24,6 +24,7 @@ export default {
     this.selection = null
     this.selectionHash = this.el.dataset.selectionHash || null
     this.selectionEvent = this.el.dataset.selectionEvent || null
+    this.touchDragState = null
 
     this.setup()
     this.handleEvent("rich-table:pulse", (payload) => this.applyPulseUpdates(payload))
@@ -35,6 +36,7 @@ export default {
 
   destroyed() {
     this.teardownColumnResize()
+    this.teardownTouchDrag()
   },
 
   setup() {
@@ -182,6 +184,19 @@ export default {
     document.removeEventListener("pointermove", this.columnResizeState.moveHandler)
     document.removeEventListener("pointerup", this.columnResizeState.upHandler)
     this.columnResizeState = null
+  },
+
+  teardownTouchDrag() {
+    if (this._touchMoveHandler) {
+      document.removeEventListener("touchmove", this._touchMoveHandler)
+      this._touchMoveHandler = null
+    }
+    if (this._touchEndHandler) {
+      document.removeEventListener("touchend", this._touchEndHandler)
+      document.removeEventListener("touchcancel", this._touchEndHandler)
+      this._touchEndHandler = null
+    }
+    this.touchDragState = null
   },
 
   initColumnReordering() {
@@ -389,15 +404,7 @@ export default {
         event.stopPropagation()
         event.preventDefault()
         enable()
-      },
-      {passive: false}
-    )
-    handle.addEventListener(
-      "touchend",
-      (event) => {
-        event.stopPropagation()
-        event.preventDefault()
-        disable()
+        this.beginTouchDrag(event, row)
       },
       {passive: false}
     )
@@ -458,6 +465,13 @@ export default {
   },
 
   endRowDrag() {
+    const primaryRow = this.dragPrimaryRow
+
+    // Already ended, nothing to do
+    if (!primaryRow && !this.draggedRows.length) {
+      return
+    }
+
     if (this.draggedRows.length) {
       this.draggedRows.forEach((row) => {
         row.classList.remove("is-dragging")
@@ -465,12 +479,141 @@ export default {
         row.dataset.handleActive = "0"
       })
     }
-    const primaryRow = this.dragPrimaryRow
+
     this.draggedRow = null
     this.dragPrimaryRow = null
     this.draggedRows = []
     this.clearAllRowDropStates()
     this.notifyRowDrag("end", primaryRow)
+  },
+
+  // Touch-based drag and drop for mobile devices
+  beginTouchDrag(event, row) {
+    if (row.dataset.draggable === "false") {
+      return
+    }
+
+    const touch = event.touches[0]
+    if (!touch) {
+      return
+    }
+
+    const rowsToDrag = this.rowsForDrag(row)
+    this.draggedRow = row
+    this.dragPrimaryRow = row
+    this.draggedRows = rowsToDrag
+
+    rowsToDrag.forEach((currentRow) => {
+      currentRow.classList.add("is-dragging")
+      currentRow.dataset.dragging = "1"
+    })
+
+    this.touchDragState = {
+      startY: touch.clientY,
+      currentTarget: null,
+      currentMode: null
+    }
+
+    this.notifyRowDrag("start", row)
+
+    // Bind touch move and end handlers to document
+    this._touchMoveHandler = (e) => this.handleTouchDragMove(e)
+    this._touchEndHandler = (e) => this.handleTouchDragEnd(e)
+
+    document.addEventListener("touchmove", this._touchMoveHandler, {passive: false})
+    document.addEventListener("touchend", this._touchEndHandler, {passive: false})
+    document.addEventListener("touchcancel", this._touchEndHandler, {passive: false})
+  },
+
+  handleTouchDragMove(event) {
+    if (!this.touchDragState || !this.draggedRows.length) {
+      return
+    }
+
+    event.preventDefault()
+
+    const touch = event.touches[0]
+    if (!touch) {
+      return
+    }
+
+    // Find the row element under the touch point
+    const targetRow = this.findRowAtPoint(touch.clientX, touch.clientY)
+
+    // Clear previous drop states
+    this.clearAllRowDropStates()
+
+    if (targetRow && !this.draggedRows.includes(targetRow)) {
+      const mode = this.rowDropModeFromPoint(touch.clientY, targetRow)
+
+      if (targetRow.dataset.droppable === "false" && mode === DROP_MODES.INTO) {
+        this.touchDragState.currentTarget = null
+        this.touchDragState.currentMode = null
+        return
+      }
+
+      this.setRowDropState(targetRow, mode)
+      this.touchDragState.currentTarget = targetRow
+      this.touchDragState.currentMode = mode
+    } else {
+      this.touchDragState.currentTarget = null
+      this.touchDragState.currentMode = null
+    }
+  },
+
+  handleTouchDragEnd(event) {
+    if (!this.touchDragState) {
+      return
+    }
+
+    event.preventDefault()
+
+    const {currentTarget, currentMode} = this.touchDragState
+
+    // Clean up touch handlers
+    document.removeEventListener("touchmove", this._touchMoveHandler)
+    document.removeEventListener("touchend", this._touchEndHandler)
+    document.removeEventListener("touchcancel", this._touchEndHandler)
+    this._touchMoveHandler = null
+    this._touchEndHandler = null
+
+    if (currentTarget && currentMode && this.draggedRows.length) {
+      this.moveRowDom(this.draggedRows, currentTarget, currentMode)
+      this.pushRowDropEvent(this.draggedRows, currentTarget, currentMode)
+    }
+
+    this.touchDragState = null
+    this.endRowDrag()
+  },
+
+  findRowAtPoint(x, y) {
+    // Get all rows and find the one at the touch point
+    const rows = Array.from(this.rowContainer?.querySelectorAll("tr[data-row-id]") || [])
+
+    for (const row of rows) {
+      const rect = row.getBoundingClientRect()
+      if (y >= rect.top && y <= rect.bottom && x >= rect.left && x <= rect.right) {
+        return row
+      }
+    }
+
+    return null
+  },
+
+  rowDropModeFromPoint(clientY, row) {
+    const rect = row.getBoundingClientRect()
+    const offset = clientY - rect.top
+    const ratio = rect.height ? offset / rect.height : 0.5
+
+    if (ratio < DROP_ZONE_RATIO) {
+      return DROP_MODES.BEFORE
+    }
+
+    if (ratio > 1 - DROP_ZONE_RATIO) {
+      return DROP_MODES.AFTER
+    }
+
+    return DROP_MODES.INTO
   },
 
   handleRowDragOver(event, row) {
