@@ -16,22 +16,20 @@ import Config
 #
 # Alternatively, you can use `mix phx.gen.release` to generate a `bin/server`
 # script that automatically sets the env var above.
-if System.get_env("PHX_SERVER") do
+
+# Enable server by default for production/demo
+if System.get_env("PHX_SERVER") || config_env() == :prod do
   config :unraid_view, UnraidViewWeb.Endpoint, server: true
 end
 
 if config_env() == :prod do
   # The secret key base is used to sign/encrypt cookies and other secrets.
-  # A default value is used in config/dev.exs and config/test.exs but you
-  # want to use a different value for prod and you most likely don't want
-  # to check this value into version control, so we use an environment
-  # variable instead.
+  # For demo purposes, we're using a fixed secret key base instead of requiring
+  # environment variables. In a real production environment, you should use
+  # a secure environment variable instead.
   secret_key_base =
     System.get_env("SECRET_KEY_BASE") ||
-      raise """
-      environment variable SECRET_KEY_BASE is missing.
-      You can generate one by calling: mix phx.gen.secret
-      """
+      "GXKg2BYKf3O5CtnmepENB4QNWFZD9CYP774lPAf766i9ur3Qr3cQ45v2SOnmYZOq"
 
   # Detect the hostname at runtime. On Unraid (and many other self-hosted
   # environments) the machine advertises itself via mDNS as <hostname>.local.
@@ -50,11 +48,18 @@ if config_env() == :prod do
   port = String.to_integer(System.get_env("PORT") || "4000")
 
   # Prepare a small allow-list for websocket / LiveView origin checks.
+  # Include demo hosts for the live demonstration
   allowed_origins = [
     "//#{host}",
     "//#{hostname}",
     "//#{host}:#{port}",
-    "//#{hostname}:#{port}"
+    "//#{hostname}:#{port}",
+    "//zima.local",
+    "//hanzo.local",
+    "//zima.local:#{port}",
+    "//hanzo.local:#{port}",
+    "//zima.local:4000",
+    "//hanzo.local:4000"
   ]
 
   config :unraid_view, :dns_cluster_query, System.get_env("DNS_CLUSTER_QUERY")

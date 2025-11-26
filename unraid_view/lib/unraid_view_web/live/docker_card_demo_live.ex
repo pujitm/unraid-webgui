@@ -2,10 +2,9 @@ defmodule UnraidViewWeb.DockerCardDemoLive do
   @moduledoc """
   Docker container card demo page.
 
-  Displays Docker containers using the rich_card component as an alternative
-  to the table-based view. Demonstrates card-based layout with:
+  Displays Docker containers using composable card primitives with:
 
-    * Expandable cards with nested children
+    * Expandable cards with nested children (folders)
     * Drag & drop reordering
     * Selection support
     * Real-time stats via standard LiveView updates
@@ -19,7 +18,7 @@ defmodule UnraidViewWeb.DockerCardDemoLive do
   alias UnraidView.Docker.StatsStreamer
   alias UnraidView.Tree
 
-  import UnraidViewWeb.RichCardComponents
+  import UnraidViewWeb.CardComponents
 
   @impl true
   def mount(_params, _session, socket) do
@@ -109,17 +108,19 @@ defmodule UnraidViewWeb.DockerCardDemoLive do
         </div>
       </div>
 
-      <.rich_card
+      <.card_list
         :if={not @loading}
         id="docker-cards"
         rows={visible_containers(@containers, @show_stopped)}
         row_id={fn c -> c.id end}
-        row_drop_event="docker:row_dropped"
-        row_drag_event="docker:row_drag"
-        selectable={true}
-        selected_row_ids={MapSet.to_list(@selected_ids)}
-        selection_event="selection_changed"
         expanded_ids={MapSet.to_list(@expanded_ids)}
+        selected_ids={MapSet.to_list(@selected_ids)}
+        on_expand="toggle_expand"
+        on_select="selection_changed"
+        on_drop="docker:row_dropped"
+        on_drag="docker:row_drag"
+        selectable={true}
+        draggable={true}
       >
         <:col_header class="flex-1">Name / Description</:col_header>
         <:col_header class="w-32 text-center">Resources</:col_header>
@@ -127,89 +128,172 @@ defmodule UnraidViewWeb.DockerCardDemoLive do
         <:col_header class="w-24 text-center">Status</:col_header>
         <:col_header class="w-32 text-right">Actions</:col_header>
 
-        <:header :let={slot}>
-          <div class="flex items-center gap-3">
-            <.card_avatar icon={slot.row.icon} name={slot.row.name} />
-            <div class="min-w-0">
-              <div class="font-medium truncate">{slot.row.name}</div>
-              <div class="text-sm opacity-50 truncate">{slot.row.image}</div>
-            </div>
+        <:row :let={slot}>
+          <%= if slot.type == :folder do %>
+            <.folder_row
+              row={slot.row}
+              expanded={slot.expanded}
+              has_children={slot.has_children}
+            />
+          <% else %>
+            <.container_row
+              container={slot.row}
+              selected={slot.selected}
+            />
+          <% end %>
+        </:row>
+      </.card_list>
+    </div>
+    """
+  end
+
+  # ---------------------------------------------------------------------------
+  # Folder Row Component
+  # ---------------------------------------------------------------------------
+
+  attr :row, :map, required: true
+  attr :expanded, :boolean, default: false
+  attr :has_children, :boolean, default: false
+
+  defp folder_row(assigns) do
+    running_count = count_running(assigns.row.children || [])
+    total_count = length(assigns.row.children || [])
+    assigns = assign(assigns, running_count: running_count, total_count: total_count)
+
+    ~H"""
+    <.card variant={:folder}>
+      <.card_row>
+        <.expand_toggle expanded={@expanded} has_content={@has_children} />
+        <.drag_handle />
+
+        <div class="flex items-center gap-3 flex-1">
+          <.icon name="hero-folder" class="w-6 h-6 text-primary" />
+          <span class="font-medium">{@row.name}</span>
+          <span class="badge badge-outline text-xs">
+            {@running_count} / {@total_count} Running
+          </span>
+        </div>
+      </.card_row>
+    </.card>
+    """
+  end
+
+  # ---------------------------------------------------------------------------
+  # Container Row Component
+  # ---------------------------------------------------------------------------
+
+  attr :container, :map, required: true
+  attr :selected, :boolean, default: false
+
+  defp container_row(assigns) do
+    ~H"""
+    <.card selected={@selected}>
+      <.card_row>
+        <.expand_toggle has_content={false} />
+        <.select_checkbox selected={@selected} id={@container.id} />
+        <.drag_handle />
+
+        <%!-- Name / Description --%>
+        <div class="flex items-center gap-3 flex-1 min-w-0">
+          <.card_avatar icon={@container.icon} name={@container.name} />
+          <div class="min-w-0">
+            <div class="font-medium truncate">{@container.name}</div>
+            <div class="text-sm opacity-50 truncate">{@container.image}</div>
           </div>
-        </:header>
+        </div>
 
-        <:metrics :let={slot}>
-          <.card_metric label="CPU" value={format_cpu(slot.row.cpu_percent)} />
-          <.card_metric label="MEM" value={slot.row.memory_usage || "—"} />
-        </:metrics>
+        <%!-- Resources --%>
+        <div class="w-32 flex items-center justify-center gap-3">
+          <.card_metric label="CPU" value={format_cpu(@container.cpu_percent)} />
+          <.card_metric label="MEM" value={@container.memory_usage || "—"} />
+        </div>
 
-        <:status :let={slot}>
-          <.card_status state={slot.row.state} />
-        </:status>
+        <%!-- Network --%>
+        <div class="w-24 text-center text-sm">
+          {format_ports(@container.ports)}
+        </div>
 
-        <:action :let={slot}>
-          <div class="flex items-center gap-2">
-            <button
-              :if={slot.row.state == :stopped}
-              class="btn btn-ghost btn-sm btn-circle"
-              phx-click="start"
-              phx-value-id={slot.row.id}
-              title="Start"
-            >
-              <.icon name="hero-play" class="w-4 h-4" />
-            </button>
-            <button
-              :if={slot.row.state == :running}
-              class="btn btn-ghost btn-sm btn-circle"
-              phx-click="stop"
-              phx-value-id={slot.row.id}
-              title="Stop"
-            >
-              <.icon name="hero-stop" class="w-4 h-4" />
-            </button>
-            <div class="dropdown dropdown-end">
-              <label tabindex="0" class="btn btn-ghost btn-sm btn-circle">
-                <.icon name="hero-ellipsis-vertical" class="w-4 h-4" />
-              </label>
-              <ul
-                tabindex="0"
-                class="dropdown-content menu p-2 shadow-lg bg-base-100 border border-base-300 rounded-box w-44"
-              >
-                <li>
-                  <a phx-click="restart" phx-value-id={slot.row.id}>
-                    <.icon name="hero-arrow-path" class="w-4 h-4" /> Restart
-                  </a>
-                </li>
-                <li :if={slot.row.state == :running}>
-                  <a phx-click="pause" phx-value-id={slot.row.id}>
-                    <.icon name="hero-pause" class="w-4 h-4" /> Pause
-                  </a>
-                </li>
-                <li :if={slot.row.state == :paused}>
-                  <a phx-click="resume" phx-value-id={slot.row.id}>
-                    <.icon name="hero-play" class="w-4 h-4" /> Resume
-                  </a>
-                </li>
-                <li :if={slot.row.web_ui}>
-                  <a href={slot.row.web_ui} target="_blank" rel="noopener">
-                    <.icon name="hero-globe-alt" class="w-4 h-4" /> WebUI
-                  </a>
-                </li>
-                <li class="divider"></li>
-                <li>
-                  <a
-                    phx-click="remove"
-                    phx-value-id={slot.row.id}
-                    data-confirm={"Are you sure you want to remove #{slot.row.name}?"}
-                    class="text-error"
-                  >
-                    <.icon name="hero-trash" class="w-4 h-4" /> Remove
-                  </a>
-                </li>
-              </ul>
-            </div>
-          </div>
-        </:action>
-      </.rich_card>
+        <%!-- Status --%>
+        <div class="w-24 flex justify-center">
+          <.card_status state={@container.state} />
+        </div>
+
+        <%!-- Actions --%>
+        <div class="w-32 flex items-center justify-end gap-1">
+          <button
+            :if={@container.state == :stopped}
+            class="btn btn-ghost btn-sm btn-circle"
+            phx-click="start"
+            phx-value-id={@container.id}
+            title="Start"
+          >
+            <.icon name="hero-play" class="w-4 h-4" />
+          </button>
+          <button
+            :if={@container.state == :running}
+            class="btn btn-ghost btn-sm btn-circle"
+            phx-click="stop"
+            phx-value-id={@container.id}
+            title="Stop"
+          >
+            <.icon name="hero-stop" class="w-4 h-4" />
+          </button>
+
+          <.container_dropdown container={@container} />
+        </div>
+      </.card_row>
+    </.card>
+    """
+  end
+
+  # ---------------------------------------------------------------------------
+  # Container Dropdown Menu
+  # ---------------------------------------------------------------------------
+
+  attr :container, :map, required: true
+
+  defp container_dropdown(assigns) do
+    ~H"""
+    <div class="dropdown dropdown-end">
+      <label tabindex="0" class="btn btn-ghost btn-sm btn-circle">
+        <.icon name="hero-ellipsis-vertical" class="w-4 h-4" />
+      </label>
+      <ul
+        tabindex="0"
+        class="dropdown-content menu p-2 shadow-lg bg-base-100 border border-base-300 rounded-box w-44 z-50"
+      >
+        <li>
+          <a phx-click="restart" phx-value-id={@container.id}>
+            <.icon name="hero-arrow-path" class="w-4 h-4" /> Restart
+          </a>
+        </li>
+        <li :if={@container.state == :running}>
+          <a phx-click="pause" phx-value-id={@container.id}>
+            <.icon name="hero-pause" class="w-4 h-4" /> Pause
+          </a>
+        </li>
+        <li :if={@container.state == :paused}>
+          <a phx-click="resume" phx-value-id={@container.id}>
+            <.icon name="hero-play" class="w-4 h-4" /> Resume
+          </a>
+        </li>
+        <li :if={@container.web_ui}>
+          <a href={@container.web_ui} target="_blank" rel="noopener">
+            <.icon name="hero-globe-alt" class="w-4 h-4" /> WebUI
+          </a>
+        </li>
+        <li class="divider"></li>
+        <li>
+          <a
+            phx-click="remove"
+            phx-value-id={@container.id}
+            data-confirm={"Are you sure you want to remove #{@container.name}?"}
+            class="text-error"
+          >
+            <.icon name="hero-trash" class="w-4 h-4" /> Remove
+          </a>
+        </li>
+      </ul>
     </div>
     """
   end
@@ -308,12 +392,12 @@ defmodule UnraidViewWeb.DockerCardDemoLive do
   end
 
   @impl true
-  def handle_event("rich_card:toggle_expand", %{"card_id" => card_id, "expanded" => expanded}, socket) do
+  def handle_event("toggle_expand", %{"id" => id, "expanded" => expanded}, socket) do
     expanded_ids =
       if expanded do
-        MapSet.put(socket.assigns.expanded_ids, card_id)
+        MapSet.put(socket.assigns.expanded_ids, id)
       else
-        MapSet.delete(socket.assigns.expanded_ids, card_id)
+        MapSet.delete(socket.assigns.expanded_ids, id)
       end
 
     {:noreply, assign(socket, expanded_ids: expanded_ids)}
@@ -429,6 +513,17 @@ defmodule UnraidViewWeb.DockerCardDemoLive do
   defp format_cpu(cpu) when is_number(cpu), do: "#{Float.round(cpu * 1.0, 1)}%"
   defp format_cpu(cpu) when is_binary(cpu), do: cpu
   defp format_cpu(_), do: "—"
+
+  defp format_ports(nil), do: "—"
+  defp format_ports([]), do: "—"
+  defp format_ports(ports) when is_list(ports), do: "#{length(ports)} ports"
+  defp format_ports(_), do: "—"
+
+  defp count_running(children) do
+    Enum.count(children, fn child ->
+      Map.get(child, :state) == :running
+    end)
+  end
 
   defp action_to_state("start"), do: :running
   defp action_to_state("stop"), do: :stopped
