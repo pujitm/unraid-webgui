@@ -381,3 +381,8 @@
   justify-content: flex-end;
   width: 100%;
 }
+
+/* Search-filtered hidden rows */
+.rich-table__row--search-hidden {
+  display: none;
+}

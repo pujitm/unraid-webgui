@@ -43,7 +43,6 @@ defmodule UnraidViewWeb.DockerLive do
       |> assign(:selected_ids, MapSet.new())
       |> assign(:stats_cache, %{})
       |> assign(:pending_actions, %{})
-      |> assign(:filter, "")
       |> assign(:show_stopped, true)
       |> assign(:logs_panel_open, false)
       |> assign(:logs_container, nil)
@@ -113,12 +112,11 @@ defmodule UnraidViewWeb.DockerLive do
           <div class="flex items-center gap-4 mb-4">
             <input
               type="text"
-              placeholder="Filter containers..."
+              placeholder="Search containers..."
               class="input input-bordered input-sm w-64"
-              phx-change="filter_changed"
-              phx-debounce="300"
-              name="filter"
-              value={@filter}
+              phx-hook="RichTableSearchInput"
+              data-target={@table_id}
+              id="docker-search"
             />
             <label class="label cursor-pointer gap-2">
               <input
@@ -129,8 +127,8 @@ defmodule UnraidViewWeb.DockerLive do
               />
               <span class="label-text">Show stopped</span>
             </label>
-            <span class="text-sm text-base-content/60">
-              {container_count_label(@containers, @filter, @show_stopped)}
+            <span id="docker-search-count" class="text-sm text-base-content/60">
+              {container_count_label(@containers, @show_stopped)}
             </span>
           </div>
 
@@ -142,13 +140,15 @@ defmodule UnraidViewWeb.DockerLive do
           <.rich_table
             :if={not @loading}
             id={@table_id}
-            rows={filtered_containers(@containers, @filter, @show_stopped)}
+            rows={visible_containers(@containers, @show_stopped)}
             row_id={fn c -> c.id end}
             selectable={true}
             selected_row_ids={MapSet.to_list(@selected_ids)}
             selection_event="selection_changed"
             row_drop_event="docker:row_dropped"
             row_drag_event="docker:row_drag"
+            searchable={true}
+            search_fields={&container_search_fields/1}
             phx-update="ignore"
           >
             <:col :let={slot} id="name" label="Container" width={260}>
@@ -446,11 +446,6 @@ defmodule UnraidViewWeb.DockerLive do
   # ---------------------------------------------------------------------------
 
   @impl true
-  def handle_event("filter_changed", %{"filter" => filter}, socket) do
-    {:noreply, assign(socket, filter: filter)}
-  end
-
-  @impl true
   def handle_event("toggle_show_stopped", _params, socket) do
     {:noreply, assign(socket, show_stopped: !socket.assigns.show_stopped)}
   end
@@ -613,19 +608,19 @@ defmodule UnraidViewWeb.DockerLive do
     end
   end
 
-  defp filtered_containers(containers, filter, show_stopped) do
-    containers
-    |> Enum.filter(fn c ->
-      (show_stopped || c.state != :stopped) &&
-        (filter == "" ||
-           String.contains?(String.downcase(c.name), String.downcase(filter)))
-    end)
+  # Only filter by show_stopped - search filtering is done client-side
+  defp visible_containers(containers, show_stopped) do
+    if show_stopped do
+      containers
+    else
+      Enum.filter(containers, &(&1.state != :stopped))
+    end
   end
 
-  defp container_count_label(containers, filter, show_stopped) do
-    filtered = filtered_containers(containers, filter, show_stopped)
+  defp container_count_label(containers, show_stopped) do
+    visible = visible_containers(containers, show_stopped)
     total = length(containers)
-    shown = length(filtered)
+    shown = length(visible)
 
     if shown == total do
       "#{total} containers"
@@ -633,6 +628,37 @@ defmodule UnraidViewWeb.DockerLive do
       "#{shown} of #{total} containers"
     end
   end
+
+  # Fields available for fuzzy search
+  defp container_search_fields(container) do
+    [
+      container.name,
+      container.image,
+      container.network_mode,
+      to_string(container.state),
+      container.compose_project,
+      format_ports_searchable(container.ports),
+      networks_to_searchable(container.networks),
+      container.status
+    ]
+  end
+
+  defp format_ports_searchable(ports) do
+    ports
+    |> Enum.flat_map(fn p ->
+      [to_string(p.private), to_string(p.public), p.type, p.ip]
+    end)
+    |> Enum.filter(&(&1 && &1 != "" && &1 != "nil"))
+    |> Enum.join(" ")
+  end
+
+  defp networks_to_searchable(networks) when is_map(networks) do
+    networks
+    |> Enum.flat_map(fn {name, %{ip: ip}} -> [name, ip] end)
+    |> Enum.join(" ")
+  end
+
+  defp networks_to_searchable(_), do: ""
 
   defp state_badge_class(:running), do: "badge-success"
   defp state_badge_class(:paused), do: "badge-warning"

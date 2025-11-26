@@ -100,6 +100,13 @@ defmodule UnraidViewWeb.RichTableComponents do
   attr(:selection_event, :string, default: nil)
   attr(:selection_label_target, :string, default: nil)
   attr(:selection_label_strings, :map, default: %{})
+  attr(:searchable, :boolean, default: false, doc: "Enable client-side fuzzy search")
+
+  attr(:search_fields, :any,
+    default: nil,
+    doc: "Function returning list of searchable strings for a row"
+  )
+
   attr(:class, :string, default: nil)
   attr(:rest, :global)
 
@@ -169,6 +176,8 @@ defmodule UnraidViewWeb.RichTableComponents do
       |> assign(:selection_hash, selection_hash)
       |> assign(:selection_label_target, assigns.selection_label_target)
       |> assign(:selection_label_strings, selection_label_strings)
+      |> assign(:searchable?, assigns.searchable)
+      |> assign(:search_fields_fun, assigns.search_fields)
       |> assign(:rest_attrs, clean_rest(assigns.rest))
 
     ~H"""
@@ -204,6 +213,7 @@ defmodule UnraidViewWeb.RichTableComponents do
       data-selection-label-all={
         if(@selectable? && @selection_label_target, do: @selection_label_strings.all)
       }
+      data-searchable={@searchable? && "true"}
       style={"--rich-table-indent-size: #{@row_indent}px;"}
       {@rest_attrs}
     >
@@ -253,6 +263,7 @@ defmodule UnraidViewWeb.RichTableComponents do
               data-draggable={row.draggable}
               data-droppable={row.droppable}
               data-selected={row.selected && "true"}
+              data-search-text={build_search_text(@searchable?, @search_fields_fun, row.presented)}
               draggable={row.draggable}
               class={row_classes(row, @row_class)}
               phx-click={maybe_row_click(@row_click, row.presented)}
@@ -518,4 +529,17 @@ defmodule UnraidViewWeb.RichTableComponents do
   defp clean_rest(nil), do: %{}
   defp clean_rest(rest) when is_map(rest), do: Map.drop(rest, [:class, "class"])
   defp clean_rest(rest), do: rest |> Enum.into(%{}) |> Map.drop([:class, "class"])
+
+  defp build_search_text(false, _fun, _row), do: nil
+  defp build_search_text(true, nil, _row), do: nil
+
+  defp build_search_text(true, fun, row) when is_function(fun, 1) do
+    row
+    |> fun.()
+    |> List.wrap()
+    |> Enum.map(&to_string/1)
+    |> Enum.filter(&(&1 != "" and &1 != "nil"))
+    |> Enum.join(" ")
+    |> String.downcase()
+  end
 end

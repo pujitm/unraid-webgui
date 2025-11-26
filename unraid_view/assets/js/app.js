@@ -28,8 +28,77 @@ import ChartToggleHook from "./chart_toggle_hook"
 import RichTableHook from "./rich_table_hook"
 import TerminalHook from "./terminal_hook"
 
+/**
+ * RichTableSearchInput - Companion hook for rich_table search functionality
+ *
+ * Dispatches search queries to a target rich_table via custom events.
+ * Also listens for search result events to update the result count display.
+ */
+const RichTableSearchInputHook = {
+  mounted() {
+    this.targetId = this.el.dataset.target
+    this.debounceTimer = null
+    this.countEl = document.getElementById(`${this.el.id}-count`) ||
+                   document.getElementById("docker-search-count")
+
+    // Dispatch search on input with debounce
+    this.el.addEventListener("input", (e) => {
+      clearTimeout(this.debounceTimer)
+      this.debounceTimer = setTimeout(() => {
+        this.dispatchSearch(e.target.value)
+      }, 150) // Fast debounce for client-side search
+    })
+
+    // Listen for search results to update count display
+    this._resultHandler = (e) => this.handleSearchResult(e)
+    window.addEventListener("rich-table:search-result", this._resultHandler)
+  },
+
+  destroyed() {
+    if (this._resultHandler) {
+      window.removeEventListener("rich-table:search-result", this._resultHandler)
+      this._resultHandler = null
+    }
+  },
+
+  dispatchSearch(query) {
+    window.dispatchEvent(
+      new CustomEvent("rich-table:search", {
+        detail: {target: this.targetId, query}
+      })
+    )
+  },
+
+  handleSearchResult(event) {
+    const {tableId, visible, total, query} = event.detail || {}
+
+    // Only handle results for our target table
+    if (tableId !== this.targetId) {
+      return
+    }
+
+    // Update count display if element exists
+    if (this.countEl) {
+      if (visible === null || !query) {
+        // No active search
+        this.countEl.textContent = `${total} containers`
+      } else if (visible === total) {
+        this.countEl.textContent = `${total} containers`
+      } else {
+        this.countEl.textContent = `${visible} of ${total} containers`
+      }
+    }
+  }
+}
+
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
-const Hooks = { CpuChart: CpuChartHook, ChartToggle: ChartToggleHook, RichTable: RichTableHook, Terminal: TerminalHook }
+const Hooks = {
+  CpuChart: CpuChartHook,
+  ChartToggle: ChartToggleHook,
+  RichTable: RichTableHook,
+  RichTableSearchInput: RichTableSearchInputHook,
+  Terminal: TerminalHook
+}
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
