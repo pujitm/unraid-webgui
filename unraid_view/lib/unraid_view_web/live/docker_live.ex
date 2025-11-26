@@ -482,25 +482,6 @@ defmodule UnraidViewWeb.DockerLive do
     {:noreply, start_container_action(socket, id, :resuming, &Docker.resume_container/1)}
   end
 
-  defp start_container_action(socket, id, action_type, action_fn) do
-    # Mark container as pending
-    pending = Map.put(socket.assigns.pending_actions, id, action_type)
-
-    # Push pending state to client immediately
-    socket =
-      socket
-      |> assign(:pending_actions, pending)
-      |> push_event("rich-table:pulse", %{
-        target: @table_id,
-        rows: [%{id: id, pending: true, pending_action: action_type}]
-      })
-
-    # Run action async
-    Task.start(fn -> action_fn.(id) end)
-
-    socket
-  end
-
   @impl true
   def handle_event("remove", %{"id" => id}, socket) do
     Docker.remove_container(id)
@@ -600,6 +581,25 @@ defmodule UnraidViewWeb.DockerLive do
   # ---------------------------------------------------------------------------
   # Private Helpers
   # ---------------------------------------------------------------------------
+
+  defp start_container_action(socket, id, action_type, action_fn) do
+    # Mark container as pending
+    pending = Map.put(socket.assigns.pending_actions, id, action_type)
+
+    # Push pending state to client immediately
+    socket =
+      socket
+      |> assign(:pending_actions, pending)
+      |> push_event("rich-table:pulse", %{
+        target: @table_id,
+        rows: [%{id: id, pending: true, pending_action: action_type}]
+      })
+
+    # Run action async
+    Task.start(fn -> action_fn.(id) end)
+
+    socket
+  end
 
   defp fetch_logs(container_id) do
     case Docker.get_logs(container_id, tail: 200) do
