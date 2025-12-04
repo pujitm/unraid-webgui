@@ -10,13 +10,13 @@ defmodule UnraidView.Application do
     children = [
       UnraidViewWeb.Telemetry,
       {DNSCluster, query: Application.get_env(:unraid_view, :dns_cluster_query) || :ignore},
-      {Phoenix.PubSub, name: UnraidView.PubSub},
+      {Phoenix.PubSub, name: Unraid.PubSub},
       # Start a worker by calling: UnraidView.Worker.start_link(arg)
       # {UnraidView.Worker, arg},
       {UnraidView.Monitoring.CPUPoller, []},
       # Docker streaming services
-      {UnraidView.Docker.StatsStreamer, []},
-      {UnraidView.Docker.EventsStreamer, []},
+      {Unraid.Docker.StatsServer, []},
+      {Unraid.Docker.EventsServer, []},
       # Event log system
       {UnraidView.EventLog.Writer, []},
       # Terminal session management

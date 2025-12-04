@@ -14,8 +14,8 @@ defmodule UnraidViewWeb.DockerCardDemoLive do
 
   use UnraidViewWeb, :live_view
 
-  alias UnraidView.Docker
-  alias UnraidView.Docker.StatsStreamer
+  alias Unraid.Docker
+  alias Unraid.Docker.StatsServer
   alias UnraidView.Tree
 
   import UnraidViewWeb.CardComponents
@@ -35,7 +35,7 @@ defmodule UnraidViewWeb.DockerCardDemoLive do
 
     if connected?(socket) do
       Docker.subscribe()
-      StatsStreamer.request_stats()
+      StatsServer.request_stats()
       send(self(), :load_containers)
     end
 
@@ -44,7 +44,7 @@ defmodule UnraidViewWeb.DockerCardDemoLive do
 
   @impl true
   def terminate(_reason, _socket) do
-    StatsStreamer.release_stats()
+    StatsServer.release_stats()
     :ok
   end
 

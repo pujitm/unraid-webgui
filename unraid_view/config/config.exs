@@ -23,7 +23,7 @@ config :unraid_view, UnraidViewWeb.Endpoint,
     formats: [html: UnraidViewWeb.ErrorHTML, json: UnraidViewWeb.ErrorJSON],
     layout: false
   ],
-  pubsub_server: UnraidView.PubSub,
+  pubsub_server: Unraid.PubSub,
   live_view: [signing_salt: "7NmbEBiG"]
 
 # Configures the mailer

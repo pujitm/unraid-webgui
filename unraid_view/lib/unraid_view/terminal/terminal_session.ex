@@ -219,11 +219,11 @@ defmodule UnraidView.Terminal.TerminalSession do
   end
 
   defp broadcast_output(session_id, data) do
-    PubSub.broadcast(UnraidView.PubSub, topic(session_id), {:terminal_output, session_id, data})
+    PubSub.broadcast(Unraid.PubSub, topic(session_id), {:terminal_output, session_id, data})
   end
 
   defp broadcast_exit(session_id, exit_code) do
-    PubSub.broadcast(UnraidView.PubSub, topic(session_id), {:terminal_exit, session_id, exit_code})
+    PubSub.broadcast(Unraid.PubSub, topic(session_id), {:terminal_exit, session_id, exit_code})
   end
 
   defp topic(session_id) do

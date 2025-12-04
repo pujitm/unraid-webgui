@@ -1,9 +1,10 @@
-defmodule UnraidView.Docker.DockerClient do
+defmodule Unraid.Docker.Adapter do
   @moduledoc """
-  Thin wrapper over ex_docker_engine_api for Docker operations.
+  Implementation layer for Docker communication.
 
-  Provides a simplified interface to the Docker Engine API,
-  handling connection setup and error normalization.
+  Handles both Docker Engine API (via ex_docker_engine_api) and CLI operations.
+  This module provides the low-level interface to Docker, used by the
+  `Unraid.Docker` context module.
   """
 
   alias DockerEngineAPI.Api.Container
@@ -16,6 +17,10 @@ defmodule UnraidView.Docker.DockerClient do
     "/var/run/docker.sock",
     Path.expand("~/.docker/run/docker.sock")
   ]
+
+  # ---------------------------------------------------------------------------
+  # Connection
+  # ---------------------------------------------------------------------------
 
   @doc """
   Creates a new connection to the Docker daemon.
@@ -163,5 +168,120 @@ defmodule UnraidView.Docker.DockerClient do
   """
   def remove_image(id, opts \\ []) do
     Image.image_delete(conn(), id, opts)
+  end
+
+  # ---------------------------------------------------------------------------
+  # CLI Operations - Stats
+  # ---------------------------------------------------------------------------
+
+  @doc """
+  Fetch current stats for all running containers via CLI.
+
+  Returns `{:ok, stats}` or `{:error, reason}` where stats is a list of maps:
+
+      [
+        %{id: "abc123", name: "nginx", cpu_percent: 5.2, memory_usage: "256MiB / 1GiB", memory_percent: 25.0},
+        ...
+      ]
+  """
+  def get_stats do
+    case System.find_executable("docker") do
+      nil ->
+        {:error, :docker_not_found}
+
+      docker_path ->
+        # Use --no-stream for a single snapshot
+        args = [
+          "stats",
+          "--no-stream",
+          "--no-trunc",
+          "--format",
+          "{{.ID}};{{.Name}};{{.CPUPerc}};{{.MemUsage}};{{.MemPerc}}"
+        ]
+
+        case System.cmd(docker_path, args, stderr_to_stdout: true) do
+          {output, 0} ->
+            stats =
+              output
+              |> String.split("\n", trim: true)
+              |> Enum.map(&parse_stats_line/1)
+              |> Enum.reject(&is_nil/1)
+
+            {:ok, stats}
+
+          {error, _code} ->
+            {:error, error}
+        end
+    end
+  end
+
+  defp parse_stats_line(line) do
+    line = String.trim(line)
+
+    case String.split(line, ";") do
+      [id, name, cpu, mem_usage, mem_perc] when id != "" ->
+        %{
+          id: String.slice(id, 0, 12),
+          name: name,
+          cpu_percent: parse_percent(cpu),
+          memory_usage: mem_usage,
+          memory_percent: parse_percent(mem_perc)
+        }
+
+      _ ->
+        nil
+    end
+  end
+
+  defp parse_percent(str) do
+    str
+    |> String.trim()
+    |> String.trim_trailing("%")
+    |> Float.parse()
+    |> case do
+      {value, _} -> value
+      :error -> 0.0
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # CLI Operations - Events
+  # ---------------------------------------------------------------------------
+
+  @doc """
+  Open a port for streaming Docker events.
+
+  Returns `{:ok, port}` or `{:error, reason}`.
+
+  The port will emit container lifecycle events in JSON format.
+  Caller is responsible for managing the port lifecycle.
+  """
+  def open_events_port do
+    case System.find_executable("docker") do
+      nil ->
+        {:error, :docker_not_found}
+
+      docker_path ->
+        # Filter to container events only, output JSON for reliable parsing
+        port =
+          Port.open(
+            {:spawn_executable, docker_path},
+            [
+              :binary,
+              :exit_status,
+              :use_stdio,
+              :stderr_to_stdout,
+              args: [
+                "events",
+                "--filter",
+                "type=container",
+                "--format",
+                "{{json .}}"
+              ]
+            ]
+          )
+
+        {:ok, port}
+    end
   end
 end

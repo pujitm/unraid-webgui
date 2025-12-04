@@ -12,7 +12,7 @@ defmodule UnraidView.EventLog.Writer do
   alias UnraidView.EventLog.Event
   alias Phoenix.PubSub
 
-  @pubsub UnraidView.PubSub
+  @pubsub Unraid.PubSub
   @all_events_topic "events:all"
   @source_topic_prefix "events:source:"
   @task_topic_prefix "events:task:"

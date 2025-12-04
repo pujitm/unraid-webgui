@@ -1,4 +1,4 @@
-defmodule UnraidView.Docker do
+defmodule Unraid.Docker do
   @moduledoc """
   Context for Docker container management.
 
@@ -14,7 +14,7 @@ defmodule UnraidView.Docker do
   ## Usage
 
       # Subscribe to all Docker updates
-      UnraidView.Docker.subscribe()
+      Unraid.Docker.subscribe()
 
       # In LiveView handle_info
       def handle_info({:containers_updated, containers}, socket) do
@@ -33,7 +33,7 @@ defmodule UnraidView.Docker do
   """
 
   alias Phoenix.PubSub
-  alias UnraidView.Docker.{DockerClient, Container}
+  alias Unraid.Docker.{Adapter, Container}
 
   @containers_topic "docker:containers"
   @stats_topic "docker:stats"
@@ -47,49 +47,49 @@ defmodule UnraidView.Docker do
   Subscribe to all Docker updates (containers, stats, and events).
   """
   def subscribe do
-    PubSub.subscribe(UnraidView.PubSub, @containers_topic)
-    PubSub.subscribe(UnraidView.PubSub, @stats_topic)
-    PubSub.subscribe(UnraidView.PubSub, @events_topic)
+    PubSub.subscribe(Unraid.PubSub, @containers_topic)
+    PubSub.subscribe(Unraid.PubSub, @stats_topic)
+    PubSub.subscribe(Unraid.PubSub, @events_topic)
   end
 
   @doc """
   Subscribe to container list updates only.
   """
   def subscribe_containers do
-    PubSub.subscribe(UnraidView.PubSub, @containers_topic)
+    PubSub.subscribe(Unraid.PubSub, @containers_topic)
   end
 
   @doc """
   Subscribe to stats updates only.
   """
   def subscribe_stats do
-    PubSub.subscribe(UnraidView.PubSub, @stats_topic)
+    PubSub.subscribe(Unraid.PubSub, @stats_topic)
   end
 
   @doc """
   Subscribe to Docker events only.
   """
   def subscribe_events do
-    PubSub.subscribe(UnraidView.PubSub, @events_topic)
+    PubSub.subscribe(Unraid.PubSub, @events_topic)
   end
 
   # ---------------------------------------------------------------------------
-  # PubSub Broadcasting (used by streamers)
+  # PubSub Broadcasting (used by servers)
   # ---------------------------------------------------------------------------
 
   @doc false
   def broadcast_containers(containers) do
-    PubSub.broadcast(UnraidView.PubSub, @containers_topic, {:containers_updated, containers})
+    PubSub.broadcast(Unraid.PubSub, @containers_topic, {:containers_updated, containers})
   end
 
   @doc false
   def broadcast_stats(stats) do
-    PubSub.broadcast(UnraidView.PubSub, @stats_topic, {:stats_updated, stats})
+    PubSub.broadcast(Unraid.PubSub, @stats_topic, {:stats_updated, stats})
   end
 
   @doc false
   def broadcast_event(event) do
-    PubSub.broadcast(UnraidView.PubSub, @events_topic, {:docker_event, event})
+    PubSub.broadcast(Unraid.PubSub, @events_topic, {:docker_event, event})
   end
 
   # ---------------------------------------------------------------------------
@@ -102,7 +102,7 @@ defmodule UnraidView.Docker do
   Returns a list of `%Container{}` structs sorted by name.
   """
   def list_containers(opts \\ []) do
-    case DockerClient.list_containers(opts) do
+    case Adapter.list_containers(opts) do
       {:ok, containers} ->
         containers
         |> Enum.map(&Container.from_api/1)
@@ -117,7 +117,7 @@ defmodule UnraidView.Docker do
   Get a single container by ID.
   """
   def get_container(id) do
-    case DockerClient.get_container(id) do
+    case Adapter.get_container(id) do
       {:ok, data} -> {:ok, Container.from_api(data)}
       {:error, reason} -> {:error, reason}
     end
@@ -131,7 +131,7 @@ defmodule UnraidView.Docker do
   Start a stopped container.
   """
   def start_container(id) do
-    case DockerClient.start_container(id) do
+    case Adapter.start_container(id) do
       {:ok, _} -> :ok
       :ok -> :ok
       {:error, reason} -> {:error, reason}
@@ -142,7 +142,7 @@ defmodule UnraidView.Docker do
   Stop a running container.
   """
   def stop_container(id, timeout \\ 10) do
-    case DockerClient.stop_container(id, timeout) do
+    case Adapter.stop_container(id, timeout) do
       {:ok, _} -> :ok
       :ok -> :ok
       {:error, reason} -> {:error, reason}
@@ -153,7 +153,7 @@ defmodule UnraidView.Docker do
   Restart a container.
   """
   def restart_container(id) do
-    case DockerClient.restart_container(id) do
+    case Adapter.restart_container(id) do
       {:ok, _} -> :ok
       :ok -> :ok
       {:error, reason} -> {:error, reason}
@@ -164,7 +164,7 @@ defmodule UnraidView.Docker do
   Pause a running container.
   """
   def pause_container(id) do
-    case DockerClient.pause_container(id) do
+    case Adapter.pause_container(id) do
       {:ok, _} -> :ok
       :ok -> :ok
       {:error, reason} -> {:error, reason}
@@ -175,7 +175,7 @@ defmodule UnraidView.Docker do
   Resume a paused container.
   """
   def resume_container(id) do
-    case DockerClient.unpause_container(id) do
+    case Adapter.unpause_container(id) do
       {:ok, _} -> :ok
       :ok -> :ok
       {:error, reason} -> {:error, reason}
@@ -186,7 +186,7 @@ defmodule UnraidView.Docker do
   Remove a container.
   """
   def remove_container(id) do
-    case DockerClient.remove_container(id) do
+    case Adapter.remove_container(id) do
       {:ok, _} -> :ok
       :ok -> :ok
       {:error, reason} -> {:error, reason}
@@ -242,7 +242,7 @@ defmodule UnraidView.Docker do
       |> Keyword.put_new(:tail, 100)
       |> Keyword.put_new(:timestamps, true)
 
-    case DockerClient.get_container_logs(container_id, opts) do
+    case Adapter.get_container_logs(container_id, opts) do
       {:ok, logs} when is_binary(logs) ->
         logs
         |> String.split("\n", trim: true)
@@ -269,7 +269,7 @@ defmodule UnraidView.Docker do
   List all images.
   """
   def list_images(opts \\ []) do
-    case DockerClient.list_images(opts) do
+    case Adapter.list_images(opts) do
       {:ok, images} -> images
       {:error, _} -> []
     end
@@ -297,7 +297,7 @@ defmodule UnraidView.Docker do
   Remove an image.
   """
   def remove_image(id) do
-    case DockerClient.remove_image(id) do
+    case Adapter.remove_image(id) do
       {:ok, _} -> :ok
       :ok -> :ok
       {:error, reason} -> {:error, reason}

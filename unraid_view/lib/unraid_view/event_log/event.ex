@@ -30,7 +30,8 @@ defmodule UnraidView.EventLog.Event do
           started_at: DateTime.t() | nil,
           completed_at: DateTime.t() | nil,
           links: [link()],
-          metadata: map()
+          metadata: map(),
+          execution_context: map() | nil
         }
 
   @derive {Jason.Encoder,
@@ -47,7 +48,8 @@ defmodule UnraidView.EventLog.Event do
              :started_at,
              :completed_at,
              :links,
-             :metadata
+             :metadata,
+             :execution_context
            ]}
 
   defstruct [
@@ -62,6 +64,7 @@ defmodule UnraidView.EventLog.Event do
     :progress,
     :started_at,
     :completed_at,
+    :execution_context,
     links: [],
     metadata: %{}
   ]
@@ -109,7 +112,8 @@ defmodule UnraidView.EventLog.Event do
         started_at: if(status == :running, do: now, else: attrs[:started_at]),
         completed_at: if(status in [:completed, :failed, :cancelled], do: now, else: nil),
         links: links,
-        metadata: attrs[:metadata] || %{}
+        metadata: attrs[:metadata] || %{},
+        execution_context: attrs[:execution_context]
       }
 
       {:ok, event}
@@ -203,7 +207,8 @@ defmodule UnraidView.EventLog.Event do
       started_at: parse_datetime(json["started_at"]),
       completed_at: parse_datetime(json["completed_at"]),
       links: parse_links(json["links"] || []),
-      metadata: json["metadata"] || %{}
+      metadata: json["metadata"] || %{},
+      execution_context: json["execution_context"]
     }
 
     {:ok, event}

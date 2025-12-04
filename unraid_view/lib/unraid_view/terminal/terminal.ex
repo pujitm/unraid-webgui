@@ -143,14 +143,14 @@ defmodule UnraidView.Terminal do
     * `{:terminal_exit, session_id, exit_code}` - When the PTY exits
   """
   def subscribe(session_id) do
-    PubSub.subscribe(UnraidView.PubSub, topic(session_id))
+    PubSub.subscribe(Unraid.PubSub, topic(session_id))
   end
 
   @doc """
   Unsubscribes from a terminal session's output.
   """
   def unsubscribe(session_id) do
-    PubSub.unsubscribe(UnraidView.PubSub, topic(session_id))
+    PubSub.unsubscribe(Unraid.PubSub, topic(session_id))
   end
 
   # ---------------------------------------------------------------------------

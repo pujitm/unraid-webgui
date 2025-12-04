@@ -1,4 +1,4 @@
-defmodule UnraidView.Docker.Container do
+defmodule Unraid.Docker.Container do
   @moduledoc """
   Struct representing a Docker container with all relevant metadata.
 

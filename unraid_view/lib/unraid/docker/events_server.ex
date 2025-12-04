@@ -1,4 +1,4 @@
-defmodule UnraidView.Docker.EventsStreamer do
+defmodule Unraid.Docker.EventsServer do
   @moduledoc """
   Streams Docker events via `docker events` CLI.
 
@@ -31,7 +31,8 @@ defmodule UnraidView.Docker.EventsStreamer do
   use GenServer
   require Logger
 
-  alias UnraidView.Docker
+  alias Unraid.Docker
+  alias Unraid.Docker.Adapter
 
   @relevant_actions ~w(start stop die pause unpause destroy create kill restart)
 
@@ -46,12 +47,12 @@ defmodule UnraidView.Docker.EventsStreamer do
 
   @impl true
   def handle_continue(:start_stream, state) do
-    case start_docker_events() do
+    case Adapter.open_events_port() do
       {:ok, port} ->
         {:noreply, %{state | port: port, buffer: ""}}
 
       {:error, reason} ->
-        Logger.warning("[EventsStreamer] Failed to start docker events: #{inspect(reason)}")
+        Logger.warning("[EventsServer] Failed to start docker events: #{inspect(reason)}")
         schedule_restart()
         {:noreply, %{state | port: nil, buffer: ""}}
     end
@@ -74,7 +75,7 @@ defmodule UnraidView.Docker.EventsStreamer do
 
   @impl true
   def handle_info({port, {:exit_status, status}}, %{port: port} = state) do
-    Logger.warning("[EventsStreamer] docker events exited with status #{status}")
+    Logger.warning("[EventsServer] docker events exited with status #{status}")
     schedule_restart()
     {:noreply, %{state | port: nil, buffer: ""}}
   end
@@ -99,35 +100,6 @@ defmodule UnraidView.Docker.EventsStreamer do
   # ---------------------------------------------------------------------------
   # Private Helpers
   # ---------------------------------------------------------------------------
-
-  defp start_docker_events do
-    case System.find_executable("docker") do
-      nil ->
-        {:error, :docker_not_found}
-
-      docker_path ->
-        # Filter to container events only, output JSON for reliable parsing
-        port =
-          Port.open(
-            {:spawn_executable, docker_path},
-            [
-              :binary,
-              :exit_status,
-              :use_stdio,
-              :stderr_to_stdout,
-              args: [
-                "events",
-                "--filter",
-                "type=container",
-                "--format",
-                "{{json .}}"
-              ]
-            ]
-          )
-
-        {:ok, port}
-    end
-  end
 
   defp schedule_restart do
     Process.send_after(self(), :restart_stream, 5_000)
