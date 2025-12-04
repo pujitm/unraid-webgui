@@ -241,7 +241,7 @@ defmodule UnraidWeb.DockerLive do
                       <.icon name="hero-play" class="w-4 h-4" /> Resume
                     </a>
                   </li>
-                  <li class="divider"></li>
+                  <.menu_separator />
                   <li>
                     <a phx-click={JS.push("show_logs", value: %{id: slot.row.id}) |> JS.dispatch("click", to: "body")}>
                       <.icon name="hero-document-text" class="w-4 h-4" /> View Logs
@@ -252,7 +252,7 @@ defmodule UnraidWeb.DockerLive do
                       <.icon name="hero-globe-alt" class="w-4 h-4" /> WebUI
                     </a>
                   </li>
-                  <li class="divider"></li>
+                  <.menu_separator />
                   <li>
                     <a
                       phx-click={JS.push("remove", value: %{id: slot.row.id}) |> JS.dispatch("click", to: "body")}

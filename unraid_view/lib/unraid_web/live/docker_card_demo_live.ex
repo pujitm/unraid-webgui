@@ -282,7 +282,7 @@ defmodule UnraidWeb.DockerCardDemoLive do
             <.icon name="hero-globe-alt" class="w-4 h-4" /> WebUI
           </a>
         </li>
-        <li class="divider"></li>
+        <.menu_separator />
         <li>
           <a
             phx-click="remove"
