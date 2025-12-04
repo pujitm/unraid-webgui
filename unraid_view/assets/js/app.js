@@ -35,6 +35,21 @@ import TerminalHook from "./terminal_hook"
  * Dispatches search queries to a target rich_table via custom events.
  * Also listens for search result events to update the result count display.
  */
+/**
+ * EventLogScroll - Hook for auto-scrolling the event log feed
+ *
+ * When follow mode is enabled, automatically scrolls to show new events.
+ */
+const EventLogScrollHook = {
+  mounted() {
+    this.handleEvent("scroll_to_top", () => {
+      if (this.el.dataset.follow === "true") {
+        this.el.scrollTop = 0
+      }
+    })
+  }
+}
+
 const RichTableSearchInputHook = {
   mounted() {
     this.targetId = this.el.dataset.target
@@ -99,7 +114,8 @@ const Hooks = {
   RichTable: RichTableHook,
   CardList: CardListHook,
   RichTableSearchInput: RichTableSearchInputHook,
-  Terminal: TerminalHook
+  Terminal: TerminalHook,
+  EventLogScroll: EventLogScrollHook
 }
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
