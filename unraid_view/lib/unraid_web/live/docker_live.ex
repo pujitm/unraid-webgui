@@ -262,6 +262,11 @@ defmodule UnraidWeb.DockerLive do
                       <.icon name="hero-globe-alt" class="w-4 h-4" /> WebUI
                     </a>
                   </li>
+                  <li>
+                    <.link navigate={~p"/docker/#{slot.row.name}/edit"}>
+                      <.icon name="hero-cog-6-tooth" class="w-4 h-4" /> Edit Settings
+                    </.link>
+                  </li>
                   <.menu_separator />
                   <li>
                     <a

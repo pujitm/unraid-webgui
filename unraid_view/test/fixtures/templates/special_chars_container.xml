@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Container version="2">
+  <Name>special-app</Name>
+  <Repository>myrepo/special-app:v1.0</Repository>
+  <Registry></Registry>
+  <Network>bridge</Network>
+  <MyIP></MyIP>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support></Support>
+  <Project></Project>
+  <Overview>An app with special characters: &lt;script&gt;alert("test")&lt;/script&gt; &amp; "quotes" &apos;apostrophes&apos;</Overview>
+  <Category>Tools</Category>
+  <WebUI>http://[IP]:[PORT:8080]/path?param=value&amp;other=test</WebUI>
+  <TemplateURL></TemplateURL>
+  <Icon></Icon>
+  <ExtraParams>--label="test=value with spaces"</ExtraParams>
+  <PostArgs>--config="/path/with spaces/config.json"</PostArgs>
+  <CPUset></CPUset>
+  <DateInstalled>1699600000</DateInstalled>
+  <DonateText></DonateText>
+  <DonateLink></DonateLink>
+  <Requires></Requires>
+  <Config Name="Port with &quot;quotes&quot;" Target="8080" Default="8080" Mode="tcp" Description="Port with special &lt;chars&gt;" Type="Port" Display="always" Required="true" Mask="false">8080</Config>
+  <Config Name="Path with spaces" Target="/app/config" Default="/mnt/user/appdata/special app" Mode="rw" Description="Path containing spaces &amp; symbols" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/special app</Config>
+  <Config Name="Secret with $pecial" Target="SECRET_KEY" Default="" Mode="" Description="Contains $dollar and `backticks`" Type="Variable" Display="always" Required="false" Mask="true">p@$$w0rd!&amp;more</Config>
+  <Config Name="JSON Config" Target="CONFIG_JSON" Default="{}" Mode="" Description="JSON configuration" Type="Variable" Display="advanced" Required="false" Mask="false">{"key": "value", "nested": {"a": 1}}</Config>
+</Container>

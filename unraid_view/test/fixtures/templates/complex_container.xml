@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Container version="2">
+  <Name>plex</Name>
+  <Repository>plexinc/pms-docker:latest</Repository>
+  <Registry>https://hub.docker.com/r/plexinc/pms-docker/</Registry>
+  <Network>host</Network>
+  <MyIP></MyIP>
+  <Shell>bash</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://forums.plex.tv/</Support>
+  <Project>https://www.plex.tv/</Project>
+  <Overview>Plex Media Server organizes your video, music, and photo collections.</Overview>
+  <Category>MediaServer:Video</Category>
+  <WebUI>http://[IP]:32400/web</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/plexinc/pms-docker/master/plex-unraid.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/plexinc/pms-docker/master/img/plex-icon.png</Icon>
+  <ExtraParams>--memory=4g --restart=unless-stopped</ExtraParams>
+  <PostArgs></PostArgs>
+  <CPUset>0,1,2,3</CPUset>
+  <DateInstalled>1699800000</DateInstalled>
+  <DonateText>Support Plex</DonateText>
+  <DonateLink>https://www.plex.tv/plex-pass/</DonateLink>
+  <Requires></Requires>
+  <Config Name="Plex Claim" Target="PLEX_CLAIM" Default="" Mode="" Description="Claim token from plex.tv/claim" Type="Variable" Display="always" Required="false" Mask="true"></Config>
+  <Config Name="Plex UID" Target="PLEX_UID" Default="99" Mode="" Description="User ID for permissions" Type="Variable" Display="advanced" Required="false" Mask="false">99</Config>
+  <Config Name="Plex GID" Target="PLEX_GID" Default="100" Mode="" Description="Group ID for permissions" Type="Variable" Display="advanced" Required="false" Mask="false">100</Config>
+  <Config Name="Config" Target="/config" Default="/mnt/user/appdata/plex" Mode="rw" Description="Plex config directory" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/plex</Config>
+  <Config Name="Transcode" Target="/transcode" Default="/mnt/user/appdata/plex/transcode" Mode="rw" Description="Transcode directory" Type="Path" Display="always" Required="false" Mask="false">/mnt/user/appdata/plex/transcode</Config>
+  <Config Name="Media" Target="/data" Default="/mnt/user/media" Mode="ro" Description="Media library path" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/media</Config>
+  <Config Name="Hardware Transcoding" Target="/dev/dri" Default="/dev/dri" Mode="" Description="Intel GPU for hardware transcoding" Type="Device" Display="advanced" Required="false" Mask="false">/dev/dri</Config>
+  <Config Name="Managed Label" Target="net.unraid.docker.managed" Default="dockerman" Mode="" Description="" Type="Label" Display="hidden" Required="false" Mask="false">dockerman</Config>
+</Container>

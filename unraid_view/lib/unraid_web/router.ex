@@ -27,6 +27,7 @@ defmodule UnraidWeb.Router do
     live_session :dashboard, layout: {UnraidWeb.Layouts, :wide} do
       live "/docker", DockerLive
       live "/docker/card", DockerCardDemoLive
+      live "/docker/:name/edit", DockerEditLive
       live "/terminal", TerminalLive
       live "/vms", VmLive
       live "/events", EventLogLive

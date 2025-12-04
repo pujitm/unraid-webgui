@@ -104,6 +104,43 @@ defmodule Unraid.Docker.Container do
     }
   end
 
+  # Handle ContainerInspectResponse from container_inspect endpoint
+  def from_api(%DockerEngineAPI.Model.ContainerInspectResponse{} = data) do
+    # Labels are nested under Config in inspect response
+    config = data."Config" || %DockerEngineAPI.Model.ContainerConfig{}
+    labels = config."Labels" || %{}
+    volumes = parse_volumes(data."Mounts" || [])
+
+    # Image from inspect is the full ID, get the repo from Config.Image
+    image = config."Image" || data."Image"
+
+    %__MODULE__{
+      id: short_id(data."Id"),
+      name: normalize_name(data."Name"),
+      image: image,
+      image_id: short_id(data."Image"),
+      status: state_to_status(data."State"),
+      state: parse_state(data."State"),
+      created: parse_created(data."Created"),
+      ports: parse_ports_from_network_settings(data."NetworkSettings"),
+      networks: parse_networks(data."NetworkSettings"),
+      volumes: volumes,
+      network_mode: parse_network_mode(data."HostConfig"),
+      cpu_percent: nil,
+      memory_usage: nil,
+      memory_percent: nil,
+      icon: labels["net.unraid.docker.icon"],
+      web_ui: labels["net.unraid.docker.webui"],
+      shell: labels["net.unraid.docker.shell"] || "sh",
+      manager: parse_manager(labels),
+      compose_project: labels["com.docker.compose.project"],
+      labels: labels,
+      tailscale_enabled: tailscale_enabled?(labels, volumes),
+      tailscale_hostname: labels["net.unraid.docker.tailscale.hostname"],
+      tailscale_webui_template: labels["net.unraid.docker.tailscale.webui"]
+    }
+  end
+
   def from_api(data) when is_map(data) do
     labels = data["Labels"] || %{}
     volumes = parse_volumes(data["Mounts"] || [])
@@ -159,6 +196,10 @@ defmodule Unraid.Docker.Container do
   defp normalize_name(name) when is_binary(name), do: String.trim_leading(name, "/")
   defp normalize_name(_), do: "unknown"
 
+  defp parse_state(%DockerEngineAPI.Model.ContainerState{} = state) do
+    parse_state_string(state."Status" || "stopped")
+  end
+
   defp parse_state(%{"Status" => status}) when is_binary(status) do
     parse_state_string(status)
   end
@@ -180,6 +221,10 @@ defmodule Unraid.Docker.Container do
       "removing" -> :removing
       _ -> :stopped
     end
+  end
+
+  defp state_to_status(%DockerEngineAPI.Model.ContainerState{} = state) do
+    state."Status" || "Unknown"
   end
 
   defp state_to_status(%{"Status" => status}), do: status
@@ -215,8 +260,72 @@ defmodule Unraid.Docker.Container do
 
   defp parse_ports(_), do: []
 
+  # Parse ports from NetworkSettings.Ports (inspect response format)
+  # Format: %{"80/tcp" => [%{"HostIp" => "0.0.0.0", "HostPort" => "8080"}], "443/tcp" => nil}
+  defp parse_ports_from_network_settings(%DockerEngineAPI.Model.NetworkSettings{} = settings) do
+    ports = settings."Ports" || %{}
+    parse_ports_map(ports)
+  end
+
+  defp parse_ports_from_network_settings(%{"Ports" => ports}) when is_map(ports) do
+    parse_ports_map(ports)
+  end
+
+  defp parse_ports_from_network_settings(_), do: []
+
+  defp parse_ports_map(ports) when is_map(ports) do
+    Enum.flat_map(ports, fn {port_spec, bindings} ->
+      # port_spec is like "80/tcp" or "53/udp"
+      {private_port, type} = parse_port_spec(port_spec)
+
+      case bindings do
+        nil ->
+          # No bindings, just exposed port
+          [%{private: private_port, public: nil, type: type, ip: nil}]
+
+        bindings when is_list(bindings) ->
+          Enum.map(bindings, fn binding ->
+            host_port = binding["HostPort"] || Map.get(binding, "HostPort")
+            host_ip = binding["HostIp"] || Map.get(binding, "HostIp")
+
+            %{
+              private: private_port,
+              public: parse_port_number(host_port),
+              type: type,
+              ip: host_ip
+            }
+          end)
+
+        _ ->
+          []
+      end
+    end)
+  end
+
+  defp parse_port_spec(spec) when is_binary(spec) do
+    case String.split(spec, "/") do
+      [port, type] -> {parse_port_number(port), type}
+      [port] -> {parse_port_number(port), "tcp"}
+    end
+  end
+
+  defp parse_port_number(nil), do: nil
+  defp parse_port_number(port) when is_integer(port), do: port
+  defp parse_port_number(port) when is_binary(port) do
+    case Integer.parse(port) do
+      {num, _} -> num
+      :error -> nil
+    end
+  end
+
   # Handle DockerEngineAPI.Model.ContainerSummaryNetworkSettings struct
   defp parse_networks(%DockerEngineAPI.Model.ContainerSummaryNetworkSettings{} = settings) do
+    networks = settings."Networks" || %{}
+    parse_networks_map(networks)
+  end
+
+  # Handle DockerEngineAPI.Model.NetworkSettings struct (from inspect)
+  defp parse_networks(%DockerEngineAPI.Model.NetworkSettings{} = settings) do
     networks = settings."Networks" || %{}
     parse_networks_map(networks)
   end
@@ -246,6 +355,11 @@ defmodule Unraid.Docker.Container do
 
   # Handle DockerEngineAPI.Model.ContainerSummaryHostConfig struct
   defp parse_network_mode(%DockerEngineAPI.Model.ContainerSummaryHostConfig{} = config) do
+    config."NetworkMode" || "default"
+  end
+
+  # Handle DockerEngineAPI.Model.HostConfig struct (from inspect)
+  defp parse_network_mode(%DockerEngineAPI.Model.HostConfig{} = config) do
     config."NetworkMode" || "default"
   end
 

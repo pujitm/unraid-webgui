@@ -33,7 +33,7 @@ defmodule Unraid.Docker do
   """
 
   alias Phoenix.PubSub
-  alias Unraid.Docker.{Adapter, Container}
+  alias Unraid.Docker.{Adapter, Container, Template, TemplateAdapter, ContainerUpdater}
 
   @containers_topic "docker:containers"
   @stats_topic "docker:stats"
@@ -302,5 +302,205 @@ defmodule Unraid.Docker do
       :ok -> :ok
       {:error, reason} -> {:error, reason}
     end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Template Operations
+  # ---------------------------------------------------------------------------
+
+  @doc """
+  Get the XML template for a container.
+
+  Returns `{:ok, template}` or `{:error, reason}`.
+  """
+  def get_template(container_name) do
+    TemplateAdapter.read_template(container_name)
+  end
+
+  @doc """
+  List all available templates.
+
+  Returns a list of `{name, path}` tuples.
+  """
+  def list_templates do
+    TemplateAdapter.list_templates()
+  end
+
+  @doc """
+  Check if a template exists for the container.
+  """
+  def template_exists?(container_name) do
+    TemplateAdapter.template_exists?(container_name)
+  end
+
+  @doc """
+  Save a template without updating the container.
+
+  Useful for saving changes before applying them.
+  """
+  def save_template(%Template{} = template) do
+    TemplateAdapter.write_template(template)
+  end
+
+  @doc """
+  Delete a template file.
+  """
+  def delete_template(container_name) do
+    TemplateAdapter.delete_template(container_name)
+  end
+
+  # ---------------------------------------------------------------------------
+  # Container Settings Update
+  # ---------------------------------------------------------------------------
+
+  @doc """
+  Update a container with new settings.
+
+  This will:
+  1. Save the template to XML
+  2. Stop and remove the old container
+  3. Create and start the new container
+
+  ## Options
+    - `:pull_image` - Pull the image before creating (default: false)
+    - `:start_after_create` - Start container after creating (default: true)
+    - `:create_paths` - Create host paths for volumes if missing (default: true)
+    - `:backup` - Backup existing template before saving (default: false)
+    - `:stop_timeout` - Seconds to wait when stopping (default: 10)
+    - `:progress_callback` - Function called with `(step, step_number)` for progress updates
+
+  Returns `{:ok, result}` or `{:error, reason}`.
+  """
+  def update_container_settings(%Template{} = template, opts \\ []) do
+    ContainerUpdater.update_container(template, opts)
+  end
+
+  @doc """
+  Preview the docker create command for a template without executing.
+
+  Useful for showing users what command will be run.
+  """
+  def preview_update(%Template{} = template, opts \\ []) do
+    ContainerUpdater.dry_run(template, opts)
+  end
+
+  @doc """
+  Validate a template for required fields and configuration.
+  """
+  def validate_template(%Template{} = template) do
+    Template.validate(template)
+  end
+
+  @doc """
+  Create a new template struct for a container based on its current running state.
+
+  This is useful for creating a template from an existing container that
+  may not have an XML template file yet.
+  """
+  def template_from_container(container_name) do
+    with {:ok, container} <- get_container(container_name) do
+      # Try to load existing template first
+      case get_template(container_name) do
+        {:ok, template} ->
+          {:ok, template}
+
+        {:error, _} ->
+          # No template exists, create a basic one from container info
+          {:ok, create_basic_template(container)}
+      end
+    end
+  end
+
+  defp create_basic_template(container) do
+    %Template{
+      name: container.name,
+      repository: container.image,
+      registry: nil,
+      network: container.network_mode || "bridge",
+      my_ip: nil,
+      shell: container.shell || "sh",
+      privileged: false,
+      extra_params: nil,
+      post_args: nil,
+      cpuset: nil,
+      web_ui: container.web_ui,
+      icon: container.icon,
+      overview: nil,
+      category: nil,
+      support: nil,
+      project: nil,
+      template_url: nil,
+      donate_text: nil,
+      donate_link: nil,
+      requires: nil,
+      date_installed: :os.system_time(:second),
+      configs: build_configs_from_container(container),
+      tailscale:
+        if container.tailscale_enabled do
+          %{
+            enabled: true,
+            hostname: container.tailscale_hostname,
+            is_exit_node: false,
+            exit_node_ip: nil,
+            ssh: nil,
+            userspace_networking: nil,
+            lan_access: nil,
+            serve: nil,
+            serve_port: nil,
+            serve_target: nil,
+            serve_local_path: nil,
+            serve_protocol: nil,
+            serve_protocol_port: nil,
+            serve_path: nil,
+            web_ui: container.tailscale_webui_template,
+            routes: nil,
+            accept_routes: false,
+            daemon_params: nil,
+            extra_params: nil,
+            state_dir: nil,
+            troubleshooting: false
+          }
+        else
+          nil
+        end
+    }
+  end
+
+  defp build_configs_from_container(container) do
+    port_configs =
+      Enum.map(container.ports || [], fn port ->
+        %{
+          name: "Port #{port.private}",
+          target: to_string(port.private),
+          default: to_string(port.public || ""),
+          value: to_string(port.public || ""),
+          mode: port.type || "tcp",
+          type: :port,
+          display: "always",
+          required: false,
+          mask: false,
+          description: ""
+        }
+      end)
+
+    volume_configs =
+      Enum.map(container.volumes || [], fn volume ->
+        [host, container_path | _] = String.split(volume, ":", parts: 3)
+
+        %{
+          name: "Path #{container_path}",
+          target: container_path,
+          default: host,
+          value: host,
+          mode: "rw",
+          type: :path,
+          display: "always",
+          required: false,
+          mask: false,
+          description: ""
+        }
+      end)
+
+    port_configs ++ volume_configs
   end
 end
