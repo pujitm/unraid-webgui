@@ -17,17 +17,17 @@ defmodule UnraidView.Monitoring.CPU do
 
   @doc "Subscribe the current process to CPU monitoring updates."
   def subscribe do
-    PubSub.subscribe(UnraidView.PubSub, @topic)
+    PubSub.subscribe(Unraid.PubSub, @topic)
   end
 
   @doc "Broadcast a CPU usage update to all subscribers."
   def broadcast_usage(%{per_core: _cores, util: _util} = payload) do
-    PubSub.broadcast(UnraidView.PubSub, @topic, {:cpu_usage, payload})
+    PubSub.broadcast(Unraid.PubSub, @topic, {:cpu_usage, payload})
   end
 
   @doc "Broadcast a request for LiveViews to show/hide the CPU chart."
   def set_show_chart(show?) when is_boolean(show?) do
-    PubSub.broadcast(UnraidView.PubSub, @topic, {:set_show_chart, show?})
+    PubSub.broadcast(Unraid.PubSub, @topic, {:set_show_chart, show?})
   end
 
   @doc "Return utilisation (0-100 %) for every CPU core, using :cpu_sup."

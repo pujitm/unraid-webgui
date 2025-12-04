@@ -56,10 +56,10 @@ defmodule UnraidView.EventLog do
       EventLog.subscribe_event(task.id)
   """
 
-  alias UnraidView.EventLog.{Event, Writer}
+  alias UnraidView.EventLog.{Context, Event, Writer}
   alias Phoenix.PubSub
 
-  @pubsub UnraidView.PubSub
+  @pubsub Unraid.PubSub
   @all_events_topic "events:all"
   @source_topic_prefix "events:source:"
   @task_topic_prefix "events:task:"
@@ -84,7 +84,19 @@ defmodule UnraidView.EventLog do
   Returns `{:ok, event}` or `{:error, reason}`.
   """
   @spec emit(map()) :: {:ok, Event.t()} | {:error, term()}
-  defdelegate emit(attrs), to: Writer
+  def emit(attrs) do
+    context = Context.get_all()
+
+    attrs_with_context =
+      if map_size(context) > 0 do
+        # Inject into dedicated execution_context field (not metadata)
+        Map.put(attrs, :execution_context, context)
+      else
+        attrs
+      end
+
+    Writer.emit(attrs_with_context)
+  end
 
   @doc """
   Updates an existing event.
