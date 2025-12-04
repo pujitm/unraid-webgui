@@ -183,6 +183,16 @@ defmodule UnraidWeb.DockerLive do
               <span class="text-sm truncate" data-row-field="network">{slot.row.network_mode}</span>
             </:col>
 
+            <:col :let={slot} id="tailscale" label="" width={50}>
+              <span
+                :if={slot.row.tailscale_enabled}
+                class="badge badge-xs badge-outline gap-0.5"
+                title="Tailscale enabled"
+              >
+                <.tailscale_icon class="w-3 h-3" /> TS
+              </span>
+            </:col>
+
             <:col :let={slot} id="ip" label="IP" width={120}>
               <span class="text-sm font-mono" data-row-field="ip">{primary_ip(slot.row)}</span>
             </:col>
@@ -735,4 +745,25 @@ defmodule UnraidWeb.DockerLive do
   end
 
   defp format_uptime(_), do: "—"
+
+  # ---------------------------------------------------------------------------
+  # Tailscale Icon Component
+  # ---------------------------------------------------------------------------
+
+  attr :class, :string, default: nil
+
+  defp tailscale_icon(assigns) do
+    ~H"""
+    <svg class={@class} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <circle cx="12" cy="6" r="3" />
+      <circle cx="6" cy="12" r="3" />
+      <circle cx="18" cy="12" r="3" />
+      <circle cx="12" cy="18" r="3" />
+      <circle cx="6" cy="6" r="1.5" opacity="0.5" />
+      <circle cx="18" cy="6" r="1.5" opacity="0.5" />
+      <circle cx="6" cy="18" r="1.5" opacity="0.5" />
+      <circle cx="18" cy="18" r="1.5" opacity="0.5" />
+    </svg>
+    """
+  end
 end

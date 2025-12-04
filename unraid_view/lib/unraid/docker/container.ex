@@ -35,7 +35,10 @@ defmodule Unraid.Docker.Container do
           shell: String.t() | nil,
           manager: String.t() | nil,
           compose_project: String.t() | nil,
-          labels: %{String.t() => String.t()}
+          labels: %{String.t() => String.t()},
+          tailscale_enabled: boolean(),
+          tailscale_hostname: String.t() | nil,
+          tailscale_webui_template: String.t() | nil
         }
 
   defstruct [
@@ -58,7 +61,10 @@ defmodule Unraid.Docker.Container do
     :shell,
     :manager,
     :compose_project,
-    :labels
+    :labels,
+    :tailscale_enabled,
+    :tailscale_hostname,
+    :tailscale_webui_template
   ]
 
   @doc """
@@ -69,6 +75,7 @@ defmodule Unraid.Docker.Container do
   """
   def from_api(%DockerEngineAPI.Model.ContainerSummary{} = data) do
     labels = data."Labels" || %{}
+    volumes = parse_volumes(data."Mounts" || [])
 
     %__MODULE__{
       id: short_id(data."Id"),
@@ -80,7 +87,7 @@ defmodule Unraid.Docker.Container do
       created: parse_created(data."Created"),
       ports: parse_ports(data."Ports" || []),
       networks: parse_networks(data."NetworkSettings"),
-      volumes: parse_volumes(data."Mounts" || []),
+      volumes: volumes,
       network_mode: parse_network_mode(data."HostConfig"),
       cpu_percent: nil,
       memory_usage: nil,
@@ -90,12 +97,16 @@ defmodule Unraid.Docker.Container do
       shell: labels["net.unraid.docker.shell"] || "sh",
       manager: parse_manager(labels),
       compose_project: labels["com.docker.compose.project"],
-      labels: labels
+      labels: labels,
+      tailscale_enabled: tailscale_enabled?(labels, volumes),
+      tailscale_hostname: labels["net.unraid.docker.tailscale.hostname"],
+      tailscale_webui_template: labels["net.unraid.docker.tailscale.webui"]
     }
   end
 
   def from_api(data) when is_map(data) do
     labels = data["Labels"] || %{}
+    volumes = parse_volumes(data["Mounts"] || [])
 
     %__MODULE__{
       id: short_id(data["Id"]),
@@ -107,7 +118,7 @@ defmodule Unraid.Docker.Container do
       created: parse_created(data["Created"]),
       ports: parse_ports(data["Ports"] || []),
       networks: parse_networks(data["NetworkSettings"]),
-      volumes: parse_volumes(data["Mounts"] || []),
+      volumes: volumes,
       network_mode: parse_network_mode(data["HostConfig"]),
       cpu_percent: nil,
       memory_usage: nil,
@@ -117,7 +128,10 @@ defmodule Unraid.Docker.Container do
       shell: labels["net.unraid.docker.shell"] || "sh",
       manager: parse_manager(labels),
       compose_project: labels["com.docker.compose.project"],
-      labels: labels
+      labels: labels,
+      tailscale_enabled: tailscale_enabled?(labels, volumes),
+      tailscale_hostname: labels["net.unraid.docker.tailscale.hostname"],
+      tailscale_webui_template: labels["net.unraid.docker.tailscale.webui"]
     }
   end
 
@@ -255,5 +269,11 @@ defmodule Unraid.Docker.Container do
       labels["com.docker.compose.project"] != nil -> "composeman"
       true -> nil
     end
+  end
+
+  defp tailscale_enabled?(labels, volumes) do
+    has_hostname_label = Map.has_key?(labels, "net.unraid.docker.tailscale.hostname")
+    has_hook_mount = Enum.any?(volumes, &String.contains?(&1, "tailscale_container_hook"))
+    has_hostname_label or has_hook_mount
   end
 end

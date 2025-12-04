@@ -171,6 +171,54 @@ defmodule Unraid.Docker.Adapter do
   end
 
   # ---------------------------------------------------------------------------
+  # CLI Operations - Exec
+  # ---------------------------------------------------------------------------
+
+  @doc """
+  Execute a command inside a running container.
+
+  Returns `{:ok, output}` or `{:error, reason}`.
+
+  ## Options
+    - `:timeout` - Command timeout in milliseconds (default: 5000)
+
+  ## Examples
+
+      exec_in_container("my-container", ["tailscale", "status", "--json"])
+      exec_in_container("my-container", ["/bin/sh", "-c", "echo hello"])
+  """
+  def exec_in_container(container_name, command, opts \\ []) do
+    timeout = Keyword.get(opts, :timeout, 5_000)
+
+    case System.find_executable("docker") do
+      nil ->
+        {:error, :docker_not_found}
+
+      docker_path ->
+        # Clean container name (remove leading /)
+        clean_name = String.trim_leading(container_name, "/")
+        args = ["exec", clean_name | command]
+
+        # Use Task.async/await for timeout support since System.cmd doesn't have a timeout option
+        task =
+          Task.async(fn ->
+            System.cmd(docker_path, args, stderr_to_stdout: true)
+          end)
+
+        case Task.yield(task, timeout) || Task.shutdown(task, :brutal_kill) do
+          {:ok, {output, 0}} ->
+            {:ok, output}
+
+          {:ok, {error, code}} ->
+            {:error, {:exit_code, code, error}}
+
+          nil ->
+            {:error, :timeout}
+        end
+    end
+  end
+
+  # ---------------------------------------------------------------------------
   # CLI Operations - Stats
   # ---------------------------------------------------------------------------
 
