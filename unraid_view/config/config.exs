@@ -10,6 +10,11 @@ import Config
 config :unraid_view,
   generators: [timestamp_type: :utc_datetime]
 
+# Event log configuration
+config :unraid_view, UnraidView.EventLog,
+  enabled: true,
+  recent_limit: 500
+
 # Configures the endpoint
 config :unraid_view, UnraidViewWeb.Endpoint,
   url: [host: "localhost"],

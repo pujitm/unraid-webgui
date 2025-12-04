@@ -17,6 +17,8 @@ defmodule UnraidView.Application do
       # Docker streaming services
       {UnraidView.Docker.StatsStreamer, []},
       {UnraidView.Docker.EventsStreamer, []},
+      # Event log system
+      {UnraidView.EventLog.Writer, []},
       # Terminal session management
       {Registry, keys: :unique, name: UnraidView.Terminal.Registry},
       {UnraidView.Terminal.TerminalSupervisor, []},

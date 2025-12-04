@@ -75,3 +75,7 @@ config :phoenix_live_view,
 
 # Disable swoosh api client as it is only required for production adapters.
 config :swoosh, :api_client, false
+
+# Event log development configuration
+config :unraid_view, UnraidView.EventLog,
+  log_dir: Path.expand("../tmp/event_logs", __DIR__)
