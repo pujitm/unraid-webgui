@@ -7,20 +7,20 @@
 # General application configuration
 import Config
 
-config :unraid_view,
+config :unraid,
   generators: [timestamp_type: :utc_datetime]
 
 # Event log configuration
-config :unraid_view, UnraidView.EventLog,
+config :unraid, Unraid.EventLog,
   enabled: true,
   recent_limit: 500
 
 # Configures the endpoint
-config :unraid_view, UnraidViewWeb.Endpoint,
+config :unraid, UnraidWeb.Endpoint,
   url: [host: "localhost"],
   adapter: Bandit.PhoenixAdapter,
   render_errors: [
-    formats: [html: UnraidViewWeb.ErrorHTML, json: UnraidViewWeb.ErrorJSON],
+    formats: [html: UnraidWeb.ErrorHTML, json: UnraidWeb.ErrorJSON],
     layout: false
   ],
   pubsub_server: Unraid.PubSub,
@@ -33,12 +33,12 @@ config :unraid_view, UnraidViewWeb.Endpoint,
 #
 # For production it's recommended to configure a different adapter
 # at the `config/runtime.exs`.
-config :unraid_view, UnraidView.Mailer, adapter: Swoosh.Adapters.Local
+config :unraid, Unraid.Mailer, adapter: Swoosh.Adapters.Local
 
 # Configure esbuild (the version is required)
 config :esbuild,
   version: "0.17.11",
-  unraid_view: [
+  unraid: [
     args:
       ~w(js/app.js --bundle --target=es2022 --outdir=../priv/static/assets/js --external:/fonts/* --external:/images/*),
     cd: Path.expand("../assets", __DIR__),
@@ -48,7 +48,7 @@ config :esbuild,
 # Configure tailwind (the version is required)
 config :tailwind,
   version: "4.0.9",
-  unraid_view: [
+  unraid: [
     args: ~w(
       --input=assets/css/app.css
       --output=priv/static/assets/css/app.css

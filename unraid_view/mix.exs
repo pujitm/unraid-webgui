@@ -1,9 +1,9 @@
-defmodule UnraidView.MixProject do
+defmodule Unraid.MixProject do
   use Mix.Project
 
   def project do
     [
-      app: :unraid_view,
+      app: :unraid,
       version: "0.1.0",
       elixir: "~> 1.15",
       elixirc_paths: elixirc_paths(Mix.env()),
@@ -19,7 +19,7 @@ defmodule UnraidView.MixProject do
   # Type `mix help compile.app` for more information.
   def application do
     [
-      mod: {UnraidView.Application, []},
+      mod: {Unraid.Application, []},
       extra_applications: [:logger, :runtime_tools, :os_mon]
     ]
   end
@@ -33,6 +33,8 @@ defmodule UnraidView.MixProject do
   # Type `mix help deps` for examples and options.
   defp deps do
     [
+      {:tidewave, "~> 0.5", only: [:dev]},
+      {:igniter, "~> 0.6", only: [:dev, :test]},
       {:phoenix, "~> 1.8.0-rc.3", override: true},
       {:phoenix_html, "~> 4.1"},
       {:phoenix_live_reload, "~> 1.2", only: :dev},
@@ -71,11 +73,15 @@ defmodule UnraidView.MixProject do
   defp aliases do
     [
       setup: ["deps.get", "assets.setup", "assets.build"],
-      "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing", "cmd --cd assets npm install"],
-      "assets.build": ["tailwind unraid_view", "esbuild unraid_view"],
+      "assets.setup": [
+        "tailwind.install --if-missing",
+        "esbuild.install --if-missing",
+        "cmd --cd assets npm install"
+      ],
+      "assets.build": ["tailwind unraid", "esbuild unraid"],
       "assets.deploy": [
-        "tailwind unraid_view --minify",
-        "esbuild unraid_view --minify",
+        "tailwind unraid --minify",
+        "esbuild unraid --minify",
         "phx.digest"
       ]
     ]

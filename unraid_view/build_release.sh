@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# Production release build script for Unraid View Elixir Phoenix app
+# Production release build script for Unraid Elixir Phoenix app
 # This script creates a standalone release that can be deployed without Mix/Elixir
 
-echo "🏗️ Building Unraid View Production Release..."
+echo "🏗️ Building Unraid Production Release..."
 
 # Set production environment
 export MIX_ENV=prod
@@ -35,17 +35,17 @@ APP_VERSION=$(grep 'version:' mix.exs | sed 's/.*version: "\(.*\)".*/\1/')
 echo ""
 echo "✅ Release build completed successfully!"
 echo ""
-echo "📍 Release location: _build/prod/rel/unraid_view/"
+echo "📍 Release location: _build/prod/rel/unraid/"
 echo "📦 Release version: $APP_VERSION"
 echo ""
 echo "🚀 To run the release:"
-echo "  _build/prod/rel/unraid_view/bin/unraid_view start"
+echo "  _build/prod/rel/unraid/bin/unraid start"
 echo ""
 echo "🔧 To run in daemon mode:"
-echo "  _build/prod/rel/unraid_view/bin/unraid_view daemon"
+echo "  _build/prod/rel/unraid/bin/unraid daemon"
 echo ""
 echo "🛑 To stop the release:"
-echo "  _build/prod/rel/unraid_view/bin/unraid_view stop"
+echo "  _build/prod/rel/unraid/bin/unraid stop"
 echo ""
 echo "💡 The release is completely self-contained and can be"
-echo "   copied to other systems without needing Elixir/Mix installed." 
+echo "   copied to other systems without needing Elixir/Mix installed."

@@ -6,7 +6,7 @@ import Config
 # The watchers configuration can be used to run external
 # watchers to your application. For example, we can use it
 # to bundle .js and .css sources.
-config :unraid_view, UnraidViewWeb.Endpoint,
+config :unraid, UnraidWeb.Endpoint,
   # Binding to loopback ipv4 address prevents access from other machines.
   # Change to `ip: {0, 0, 0, 0}` to allow access from other machines.
   http: [ip: {0, 0, 0, 0}, port: String.to_integer(System.get_env("PORT") || "4000")],
@@ -15,8 +15,8 @@ config :unraid_view, UnraidViewWeb.Endpoint,
   debug_errors: true,
   secret_key_base: "9lUUnUfhlND1fXGxgl5vYAki2QFt8uWVn+knQv2lx9jjzwKZ5QG/n56mHjDGO4/T",
   watchers: [
-    esbuild: {Esbuild, :install_and_run, [:unraid_view, ~w(--sourcemap=inline --watch)]},
-    tailwind: {Tailwind, :install_and_run, [:unraid_view, ~w(--watch)]}
+    esbuild: {Esbuild, :install_and_run, [:unraid, ~w(--sourcemap=inline --watch)]},
+    tailwind: {Tailwind, :install_and_run, [:unraid, ~w(--watch)]}
   ]
 
 # ## SSL Support
@@ -43,18 +43,18 @@ config :unraid_view, UnraidViewWeb.Endpoint,
 # different ports.
 
 # Watch static and templates for browser reloading.
-config :unraid_view, UnraidViewWeb.Endpoint,
+config :unraid, UnraidWeb.Endpoint,
   live_reload: [
     web_console_logger: true,
     patterns: [
       ~r"priv/static/(?!uploads/).*(js|css|png|jpeg|jpg|gif|svg)$",
       ~r"priv/gettext/.*(po)$",
-      ~r"lib/unraid_view_web/(?:controllers|live|components|router)/?.*\.(ex|heex)$"
+      ~r"lib/unraid_web/(?:controllers|live|components|router)/?.*\.(ex|heex)$"
     ]
   ]
 
 # Enable dev routes for dashboard and mailbox
-config :unraid_view, dev_routes: true
+config :unraid, dev_routes: true
 
 # Do not include metadata nor timestamps in development logs
 config :logger, :default_formatter, format: "[$level] $message\n"
@@ -77,5 +77,5 @@ config :phoenix_live_view,
 config :swoosh, :api_client, false
 
 # Event log development configuration
-config :unraid_view, UnraidView.EventLog,
+config :unraid, Unraid.EventLog,
   log_dir: Path.expand("../tmp/event_logs", __DIR__)
