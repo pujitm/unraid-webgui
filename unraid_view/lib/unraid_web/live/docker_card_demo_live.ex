@@ -315,6 +315,11 @@ defmodule UnraidWeb.DockerCardDemoLive do
             <.tailscale_icon class="w-4 h-4" /> Tailscale WebUI
           </a>
         </li>
+        <li>
+          <.link navigate={~p"/docker/#{@container.name}/edit"}>
+            <.icon name="hero-cog-6-tooth" class="w-4 h-4" /> Edit Settings
+          </.link>
+        </li>
         <.menu_separator />
         <li>
           <a

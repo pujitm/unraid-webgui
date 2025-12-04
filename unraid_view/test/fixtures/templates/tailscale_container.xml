@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Container version="2">
+  <Name>pihole-ts</Name>
+  <Repository>pihole/pihole:latest</Repository>
+  <Registry>https://hub.docker.com/r/pihole/pihole/</Registry>
+  <Network>bridge</Network>
+  <MyIP>192.168.1.100</MyIP>
+  <Shell>bash</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://discourse.pi-hole.net/</Support>
+  <Project>https://pi-hole.net/</Project>
+  <Overview>Pi-hole is a network-wide ad blocker with Tailscale integration.</Overview>
+  <Category>Network:DNS</Category>
+  <WebUI>http://[IP]:[PORT:80]/admin</WebUI>
+  <TemplateURL></TemplateURL>
+  <Icon>https://raw.githubusercontent.com/pi-hole/graphics/master/Logos/pihole.png</Icon>
+  <ExtraParams></ExtraParams>
+  <PostArgs></PostArgs>
+  <CPUset></CPUset>
+  <DateInstalled>1699700000</DateInstalled>
+  <DonateText>Donate to Pi-hole</DonateText>
+  <DonateLink>https://pi-hole.net/donate/</DonateLink>
+  <Requires></Requires>
+  <Config Name="DNS Port" Target="53" Default="53" Mode="tcp" Description="DNS TCP port" Type="Port" Display="always" Required="true" Mask="false">53</Config>
+  <Config Name="DNS UDP Port" Target="53" Default="53" Mode="udp" Description="DNS UDP port" Type="Port" Display="always" Required="true" Mask="false">53</Config>
+  <Config Name="Web Port" Target="80" Default="8053" Mode="tcp" Description="Web interface port" Type="Port" Display="always" Required="true" Mask="false">8053</Config>
+  <Config Name="Config" Target="/etc/pihole" Default="/mnt/user/appdata/pihole/etc" Mode="rw" Description="Pi-hole config" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/pihole/etc</Config>
+  <Config Name="Dnsmasq Config" Target="/etc/dnsmasq.d" Default="/mnt/user/appdata/pihole/dnsmasq" Mode="rw" Description="Dnsmasq config" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/pihole/dnsmasq</Config>
+  <Config Name="Web Password" Target="WEBPASSWORD" Default="" Mode="" Description="Admin password" Type="Variable" Display="always" Required="false" Mask="true">secretpassword</Config>
+  <Config Name="Timezone" Target="TZ" Default="America/Los_Angeles" Mode="" Description="Container timezone" Type="Variable" Display="advanced" Required="false" Mask="false">America/Los_Angeles</Config>
+  <TailscaleEnabled>true</TailscaleEnabled>
+  <TailscaleIsExitNode>false</TailscaleIsExitNode>
+  <TailscaleHostname>pihole-server</TailscaleHostname>
+  <TailscaleExitNodeIP></TailscaleExitNodeIP>
+  <TailscaleSSH>true</TailscaleSSH>
+  <TailscaleUserspaceNetworking>false</TailscaleUserspaceNetworking>
+  <TailscaleLANAccess>true</TailscaleLANAccess>
+  <TailscaleServe>serve</TailscaleServe>
+  <TailscaleWebUI>https://[hostname][magicdns]/admin</TailscaleWebUI>
+  <TailscaleServePort>443</TailscaleServePort>
+  <TailscaleServeTarget>http://localhost:80</TailscaleServeTarget>
+  <TailscaleServeLocalPath></TailscaleServeLocalPath>
+  <TailscaleServeProtocol></TailscaleServeProtocol>
+  <TailscaleServeProtocolPort></TailscaleServeProtocolPort>
+  <TailscaleServePath></TailscaleServePath>
+  <TailscaleDParams></TailscaleDParams>
+  <TailscaleParams></TailscaleParams>
+  <TailscaleRoutes>192.168.1.0/24</TailscaleRoutes>
+  <TailscaleAcceptRoutes>true</TailscaleAcceptRoutes>
+  <TailscaleTroubleshooting></TailscaleTroubleshooting>
+  <TailscaleStateDir>/mnt/user/appdata/tailscale/pihole</TailscaleStateDir>
+</Container>

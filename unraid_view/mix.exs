@@ -60,7 +60,9 @@ defmodule Unraid.MixProject do
       {:bandit, "~> 1.5"},
       {:eini, "~> 1.2"},
       {:ex_docker_engine_api, "~> 1.4"},
-      {:expty, "~> 0.2"}
+      {:expty, "~> 0.2"},
+      {:sweet_xml, "~> 0.7"},
+      {:xml_builder, "~> 2.2"}
     ]
   end
 
