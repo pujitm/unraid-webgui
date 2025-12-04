@@ -3,7 +3,7 @@
 # Script to run the production release
 # Make sure you've built the release first with ./build_release.sh
 
-RELEASE_PATH="_build/prod/rel/unraid_view/bin/unraid_view"
+RELEASE_PATH="_build/prod/rel/unraid/bin/unraid"
 
 if [ ! -f "$RELEASE_PATH" ]; then
     echo "❌ Release not found at $RELEASE_PATH"
@@ -11,7 +11,7 @@ if [ ! -f "$RELEASE_PATH" ]; then
     exit 1
 fi
 
-echo "🚀 Starting Unraid View Release..."
+echo "🚀 Starting Unraid Release..."
 echo ""
 echo "App will be available at:"
 echo "  - http://zima.local:4000"
@@ -23,4 +23,4 @@ echo "  $RELEASE_PATH stop"
 echo ""
 
 # Start the release
-$RELEASE_PATH start 
+$RELEASE_PATH start
