@@ -17,6 +17,7 @@ defmodule Unraid.Application do
       # Docker streaming services
       {Unraid.Docker.StatsServer, []},
       {Unraid.Docker.EventsServer, []},
+      {Unraid.Docker.TailscaleService, []},
       # Event log system
       {Unraid.EventLog.Writer, []},
       # Terminal session management
