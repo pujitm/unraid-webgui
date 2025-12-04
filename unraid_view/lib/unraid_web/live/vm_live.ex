@@ -333,7 +333,7 @@ defmodule UnraidWeb.VmLive do
             <.icon name="hero-bolt" class="w-4 h-4" /> Force Stop
           </a>
         </li>
-        <li class="my-1 h-px"></li>
+        <.menu_separator />
         <li>
           <a phx-click="edit" phx-value-id={@vm.id}>
             <.icon name="hero-pencil" class="w-4 h-4" /> Edit
@@ -344,7 +344,7 @@ defmodule UnraidWeb.VmLive do
             <.icon name="hero-document-duplicate" class="w-4 h-4" /> Clone
           </a>
         </li>
-        <li class="my-1 h-px"></li>
+        <.menu_separator />
         <li>
           <a
             phx-click="remove"

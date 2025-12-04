@@ -390,6 +390,26 @@ defmodule UnraidWeb.CoreComponents do
   end
 
   @doc """
+  Renders a separator line for dropdown menus.
+
+  This component provides a consistent visual separator between groups of menu items.
+  It uses a thin horizontal line with proper spacing.
+
+  ## Examples
+
+      <ul class="dropdown-content menu">
+        <li><a>Edit</a></li>
+        <.menu_separator />
+        <li><a>Delete</a></li>
+      </ul>
+  """
+  def menu_separator(assigns) do
+    ~H"""
+    <li class="my-1 h-px bg-base-700" role="separator"></li>
+    """
+  end
+
+  @doc """
   Renders a [Heroicon](https://heroicons.com).
 
   Heroicons come in three styles – outline, solid, and mini.
