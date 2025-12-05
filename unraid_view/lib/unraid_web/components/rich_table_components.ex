@@ -65,6 +65,7 @@ defmodule UnraidWeb.RichTableComponents do
   use Gettext, backend: UnraidWeb.Gettext
 
   alias Phoenix.LiveView.JS
+  alias Unraid.Parse
 
   @default_row_drop_event "rich_table:row_dropped"
   @default_column_resize_event "rich_table:column_resized"
@@ -382,17 +383,7 @@ defmodule UnraidWeb.RichTableComponents do
     }
   end
 
-  defp normalize_size(nil), do: nil
-  defp normalize_size(value) when is_integer(value) and value > 0, do: value
-
-  defp normalize_size(value) when is_binary(value) do
-    case Integer.parse(value) do
-      {int, _} when int > 0 -> int
-      _ -> nil
-    end
-  end
-
-  defp normalize_size(_), do: nil
+  defp normalize_size(value), do: Parse.positive_integer_or_nil(value)
 
   defp build_row_id_fun(nil) do
     fn row ->

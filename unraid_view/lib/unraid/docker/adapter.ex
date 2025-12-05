@@ -10,6 +10,7 @@ defmodule Unraid.Docker.Adapter do
   alias DockerEngineAPI.Api.Container
   alias DockerEngineAPI.Api.Image
   alias DockerEngineAPI.Connection
+  alias Unraid.Parse
 
   # Docker socket path - typically /var/run/docker.sock on Linux
   # On macOS with Docker Desktop, it may be at ~/.docker/run/docker.sock
@@ -281,16 +282,7 @@ defmodule Unraid.Docker.Adapter do
     end
   end
 
-  defp parse_percent(str) do
-    str
-    |> String.trim()
-    |> String.trim_trailing("%")
-    |> Float.parse()
-    |> case do
-      {value, _} -> value
-      :error -> 0.0
-    end
-  end
+  defp parse_percent(str), do: Parse.percent_or_default(str, 0.0)
 
   # ---------------------------------------------------------------------------
   # CLI Operations - Events

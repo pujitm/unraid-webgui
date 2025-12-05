@@ -8,6 +8,8 @@ defmodule Unraid.Docker.Template do
 
   import SweetXml
 
+  alias Unraid.Parse
+
   @type config_type :: :port | :path | :variable | :label | :device
 
   @type config_item :: %{
@@ -520,30 +522,13 @@ defmodule Unraid.Docker.Template do
   defp encode_xml(value) when is_binary(value), do: value
   defp encode_xml(value), do: to_string(value)
 
-  defp nilify(""), do: nil
-  defp nilify(value), do: value
+  defp nilify(value), do: Parse.nilify(value)
 
-  defp default(nil, default_value), do: default_value
-  defp default("", default_value), do: default_value
-  defp default(value, _default_value), do: value
+  defp default(value, default_value), do: Parse.default(value, default_value)
 
-  defp to_boolean("true"), do: true
-  defp to_boolean("false"), do: false
-  defp to_boolean(""), do: false
-  defp to_boolean(nil), do: false
-  defp to_boolean(_), do: false
+  defp to_boolean(value), do: Parse.boolean_or_default(value, false)
 
-  defp to_integer(""), do: nil
-  defp to_integer(nil), do: nil
-
-  defp to_integer(value) when is_binary(value) do
-    case Integer.parse(value) do
-      {int, _} -> int
-      :error -> nil
-    end
-  end
-
-  defp to_integer(value), do: value
+  defp to_integer(value), do: Parse.integer_or_nil(value)
 
   defp parse_config_type(type) when is_binary(type) do
     case String.downcase(type) do

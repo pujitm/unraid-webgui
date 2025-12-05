@@ -34,6 +34,7 @@ defmodule Unraid.Docker do
 
   alias Phoenix.PubSub
   alias Unraid.Docker.{Adapter, Container, Template, TemplateAdapter, ContainerUpdater}
+  alias Unraid.Parse
 
   @containers_topic "docker:containers"
   @stats_topic "docker:stats"
@@ -100,17 +101,72 @@ defmodule Unraid.Docker do
   List all containers.
 
   Returns a list of `%Container{}` structs sorted by name.
+
+  ## Options
+    - `:enrich_with_templates` - When true, stopped containers will have their
+      port information populated from their XML templates (default: true)
   """
   def list_containers(opts \\ []) do
+    enrich_with_templates = Keyword.get(opts, :enrich_with_templates, true)
+
     case Adapter.list_containers(opts) do
       {:ok, containers} ->
         containers
         |> Enum.map(&Container.from_api/1)
+        |> maybe_enrich_with_template_ports(enrich_with_templates)
         |> Enum.sort_by(& &1.name, :asc)
 
       {:error, _reason} ->
         []
     end
+  end
+
+  defp maybe_enrich_with_template_ports(containers, false), do: containers
+
+  defp maybe_enrich_with_template_ports(containers, true) do
+    Enum.map(containers, &enrich_container_with_template_ports/1)
+  end
+
+  @doc """
+  Enrich a container with port information from its XML template.
+
+  This is useful for stopped containers where the Docker API doesn't return
+  port mappings. If the container already has port data or the template
+  doesn't exist, the container is returned unchanged.
+  """
+  def enrich_container_with_template_ports(%Container{} = container) do
+    # Only enrich if container is stopped and has no ports
+    if container.state != :running and (container.ports == nil or container.ports == []) do
+      case get_template(container.name) do
+        {:ok, template} ->
+          template_ports = ports_from_template(template)
+          %{container | ports: template_ports}
+
+        {:error, _} ->
+          container
+      end
+    else
+      container
+    end
+  end
+
+  @doc """
+  Convert template port configs to container port mappings.
+
+  Returns a list of port mappings in the same format as `Container.ports`.
+  """
+  def ports_from_template(%Template{} = template) do
+    template
+    |> Template.ports()
+    |> Enum.map(fn config ->
+      %{
+        private: Parse.integer_or_nil(config.target),
+        public: Parse.integer_or_nil(config.value),
+        type: Parse.port_type_or_default(config.mode, "tcp"),
+        ip: nil
+      }
+    end)
+    |> Enum.filter(fn port -> port.private != nil end)
   end
 
   @doc """

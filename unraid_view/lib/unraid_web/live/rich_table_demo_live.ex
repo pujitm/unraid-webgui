@@ -44,6 +44,7 @@ defmodule UnraidWeb.RichTableDemoLive do
   use UnraidWeb, :live_view
 
   alias Phoenix.LiveView.JS
+  alias Unraid.Parse
   alias Unraid.Tree
 
   @tick_interval 200
@@ -331,10 +332,7 @@ defmodule UnraidWeb.RichTableDemoLive do
   end
 
   defp normalize_width(width) when is_binary(width) do
-    case Integer.parse(width) do
-      {int, _rest} -> int
-      :error -> width
-    end
+    Parse.integer_or_default(width, width)
   end
 
   defp normalize_width(width) when is_number(width), do: round(width)
