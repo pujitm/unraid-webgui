@@ -6,6 +6,8 @@ defmodule Unraid.Docker.Container do
   for use in LiveViews and other UI components.
   """
 
+  alias Unraid.Parse
+
   @type state :: :running | :paused | :stopped | :restarting | :dead | :created | :removing
 
   @type port_mapping :: %{
@@ -290,7 +292,7 @@ defmodule Unraid.Docker.Container do
 
             %{
               private: private_port,
-              public: parse_port_number(host_port),
+              public: Parse.integer_or_nil(host_port),
               type: type,
               ip: host_ip
             }
@@ -304,17 +306,8 @@ defmodule Unraid.Docker.Container do
 
   defp parse_port_spec(spec) when is_binary(spec) do
     case String.split(spec, "/") do
-      [port, type] -> {parse_port_number(port), type}
-      [port] -> {parse_port_number(port), "tcp"}
-    end
-  end
-
-  defp parse_port_number(nil), do: nil
-  defp parse_port_number(port) when is_integer(port), do: port
-  defp parse_port_number(port) when is_binary(port) do
-    case Integer.parse(port) do
-      {num, _} -> num
-      :error -> nil
+      [port, type] -> {Parse.integer_or_nil(port), type}
+      [port] -> {Parse.integer_or_nil(port), "tcp"}
     end
   end
 

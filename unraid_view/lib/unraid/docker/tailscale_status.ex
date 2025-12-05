@@ -6,6 +6,8 @@ defmodule Unraid.Docker.TailscaleStatus do
   for use in LiveViews and other UI components.
   """
 
+  alias Unraid.Parse
+
   @type exit_node_status :: %{
           online: boolean(),
           tailscale_ips: [String.t()]
@@ -194,17 +196,10 @@ defmodule Unraid.Docker.TailscaleStatus do
   defp version_less_than?(_current, nil), do: false
 
   defp version_less_than?(current, latest) do
-    current_parts = current |> String.split(".") |> Enum.map(&parse_int/1)
-    latest_parts = latest |> String.split(".") |> Enum.map(&parse_int/1)
+    current_parts = current |> String.split(".") |> Enum.map(&Parse.integer_or_default(&1, 0))
+    latest_parts = latest |> String.split(".") |> Enum.map(&Parse.integer_or_default(&1, 0))
 
     compare_version_parts(current_parts, latest_parts)
-  end
-
-  defp parse_int(str) do
-    case Integer.parse(str) do
-      {n, _} -> n
-      :error -> 0
-    end
   end
 
   defp compare_version_parts([], []), do: false

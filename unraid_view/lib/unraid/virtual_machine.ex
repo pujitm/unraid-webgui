@@ -5,6 +5,8 @@ defmodule Unraid.VirtualMachine do
   Provides functions to list, query, and control VMs through the virsh CLI.
   """
 
+  alias Unraid.Parse
+
   defstruct [
     :id,
     :name,
@@ -230,12 +232,7 @@ defmodule Unraid.VirtualMachine do
     end
   end
 
-  defp parse_int(str) do
-    case Integer.parse(str) do
-      {n, _} -> n
-      :error -> 0
-    end
-  end
+  defp parse_int(str), do: Parse.integer_or_default(str, 0)
 
   defp parse_memory_to_mb(str) do
     # virsh reports memory like "8388608 KiB" or "8192 MiB"
