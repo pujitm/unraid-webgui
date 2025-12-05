@@ -28,6 +28,7 @@ defmodule UnraidWeb.Router do
       live "/docker", DockerLive
       live "/docker/card", DockerCardDemoLive
       live "/docker/:name/edit", DockerEditLive
+      live "/docker/:name/console", DockerConsoleLive
       live "/terminal", TerminalLive
       live "/vms", VmLive
       live "/events", EventLogLive

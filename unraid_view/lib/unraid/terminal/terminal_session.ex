@@ -7,7 +7,11 @@ defmodule Unraid.Terminal.TerminalSession do
   - Input forwarding from LiveView to PTY
   - Output streaming from PTY to LiveView via PubSub
   - Terminal resize operations
-  - Graceful shutdown when owner process dies
+  - Subscriber tracking for session lifecycle management
+
+  Sessions are supervisor-owned and stay alive as long as they have subscribers
+  or until explicitly closed. Orphaned sessions (no subscribers for 5+ minutes)
+  are cleaned up by SessionCleanup.
   """
 
   use GenServer
@@ -18,7 +22,18 @@ defmodule Unraid.Terminal.TerminalSession do
   @default_cols 80
   @default_rows 24
 
-  defstruct [:id, :pty, :owner_pid, :owner_ref, :command, :args, :cols, :rows, :started_at]
+  defstruct [
+    :id,
+    :pty,
+    :command,
+    :args,
+    :cols,
+    :rows,
+    :started_at,
+    subscribers: %{},       # %{pid => monitor_ref}
+    permanent: false,       # If true, never auto-cleanup
+    last_activity: nil      # Monotonic timestamp for orphan detection
+  ]
 
   # ---------------------------------------------------------------------------
   # Public API
@@ -52,6 +67,32 @@ defmodule Unraid.Terminal.TerminalSession do
   end
 
   @doc """
+  Adds a subscriber to this session.
+  The subscriber will be monitored and automatically removed if it dies.
+  This is async (cast) for performance - no blocking.
+  """
+  def add_subscriber(session_id, pid) do
+    GenServer.cast(via_tuple(session_id), {:add_subscriber, pid})
+  end
+
+  @doc """
+  Removes a subscriber from this session.
+  This is async (cast) for performance - no blocking.
+  """
+  def remove_subscriber(session_id, pid) do
+    GenServer.cast(via_tuple(session_id), {:remove_subscriber, pid})
+  end
+
+  @doc """
+  Returns info about the session for cleanup decisions.
+  """
+  def get_info(session_id) do
+    GenServer.call(via_tuple(session_id), :get_info)
+  catch
+    :exit, _ -> {:error, :not_found}
+  end
+
+  @doc """
   Returns the via tuple for process registration.
   """
   def via_tuple(session_id) do
@@ -67,18 +108,28 @@ defmodule Unraid.Terminal.TerminalSession do
     # Trap exits to ensure terminate/2 is called for cleanup
     Process.flag(:trap_exit, true)
 
-    owner_pid = opts[:owner] || self()
-    owner_ref = Process.monitor(owner_pid)
+    # Initial subscriber (the process that created this session)
+    initial_subscriber = opts[:owner] || opts[:initial_subscriber]
+
+    # Build initial subscribers map with monitor ref
+    subscribers =
+      if initial_subscriber && initial_subscriber != self() do
+        ref = Process.monitor(initial_subscriber)
+        %{initial_subscriber => ref}
+      else
+        %{}
+      end
 
     state = %__MODULE__{
       id: opts[:id],
-      owner_pid: owner_pid,
-      owner_ref: owner_ref,
       command: opts[:command],
       args: opts[:args] || [],
       cols: opts[:cols] || @default_cols,
       rows: opts[:rows] || @default_rows,
-      started_at: DateTime.utc_now()
+      started_at: DateTime.utc_now(),
+      subscribers: subscribers,
+      permanent: opts[:permanent] || false,
+      last_activity: System.monotonic_time(:second)
     }
 
     {:ok, state, {:continue, :spawn_pty}}
@@ -118,6 +169,57 @@ defmodule Unraid.Terminal.TerminalSession do
     {:noreply, %{state | cols: cols, rows: rows}}
   end
 
+  # ---------------------------------------------------------------------------
+  # Subscriber Management
+  # ---------------------------------------------------------------------------
+
+  @impl true
+  def handle_cast({:add_subscriber, pid}, state) do
+    if Map.has_key?(state.subscribers, pid) do
+      # Already subscribed
+      {:noreply, state}
+    else
+      ref = Process.monitor(pid)
+      new_subscribers = Map.put(state.subscribers, pid, ref)
+
+      Logger.debug("[TerminalSession] Added subscriber #{inspect(pid)} to session #{state.id}")
+
+      {:noreply,
+       %{state | subscribers: new_subscribers, last_activity: System.monotonic_time(:second)}}
+    end
+  end
+
+  @impl true
+  def handle_cast({:remove_subscriber, pid}, state) do
+    case Map.pop(state.subscribers, pid) do
+      {nil, _} ->
+        # Not subscribed
+        {:noreply, state}
+
+      {ref, new_subscribers} ->
+        Process.demonitor(ref, [:flush])
+
+        Logger.debug(
+          "[TerminalSession] Removed subscriber #{inspect(pid)} from session #{state.id}"
+        )
+
+        {:noreply, %{state | subscribers: new_subscribers}}
+    end
+  end
+
+  @impl true
+  def handle_call(:get_info, _from, state) do
+    info = %{
+      id: state.id,
+      subscriber_count: map_size(state.subscribers),
+      permanent: state.permanent,
+      last_activity: state.last_activity,
+      started_at: state.started_at
+    }
+
+    {:reply, {:ok, info}, state}
+  end
+
   @impl true
   def handle_info({:pty_data, data}, state) do
     broadcast_output(state.id, data)
@@ -131,10 +233,19 @@ defmodule Unraid.Terminal.TerminalSession do
     {:stop, :normal, state}
   end
 
+  # When a subscriber dies, remove from set (don't stop session)
   @impl true
-  def handle_info({:DOWN, ref, :process, _pid, _reason}, %{owner_ref: ref} = state) do
-    Logger.debug("[TerminalSession] Owner process died, shutting down session #{state.id}")
-    {:stop, :normal, state}
+  def handle_info({:DOWN, ref, :process, pid, _reason}, state) do
+    case Map.get(state.subscribers, pid) do
+      ^ref ->
+        Logger.debug("[TerminalSession] Subscriber #{inspect(pid)} died, removing from session #{state.id}")
+        new_subscribers = Map.delete(state.subscribers, pid)
+        {:noreply, %{state | subscribers: new_subscribers}}
+
+      _ ->
+        # Not one of our subscribers, ignore
+        {:noreply, state}
+    end
   end
 
   @impl true

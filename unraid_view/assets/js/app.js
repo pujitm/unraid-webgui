@@ -131,6 +131,12 @@ window.addEventListener("phx:page-loading-stop", _info => topbar.hide())
 // connect if there are any LiveViews on the page
 liveSocket.connect()
 
+// Handle console popout events globally
+window.addEventListener("phx:console:popout", (event) => {
+  const { url } = event.detail
+  window.open(url, "_blank", "width=900,height=650,menubar=no,toolbar=no,location=no,status=no")
+})
+
 // expose liveSocket on window for web console debug logs and latency simulation:
 // >> liveSocket.enableDebug()
 // >> liveSocket.enableLatencySim(1000)  // enabled for duration of browser session

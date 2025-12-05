@@ -8,6 +8,7 @@
 import { Terminal } from "@xterm/xterm"
 import { FitAddon } from "@xterm/addon-fit"
 import { WebLinksAddon } from "@xterm/addon-web-links"
+import { SerializeAddon } from "@xterm/addon-serialize"
 
 // Catppuccin-inspired terminal themes
 const THEMES = {
@@ -85,6 +86,7 @@ export default {
     }
 
     this.fitAddon = new FitAddon()
+    this.serializeAddon = new SerializeAddon()
 
     this.terminal = new Terminal({
       theme: THEMES[this.theme] || THEMES.dark,
@@ -99,14 +101,28 @@ export default {
     })
 
     this.terminal.loadAddon(this.fitAddon)
+    this.terminal.loadAddon(this.serializeAddon)
     this.terminal.loadAddon(new WebLinksAddon())
 
     this.terminal.open(container)
+
+    // Check if there's a saved buffer to restore (for popout handoff)
+    this.restoreBufferIfAvailable()
 
     // Fit after a brief delay to ensure container has dimensions
     requestAnimationFrame(() => {
       this.fitAddon.fit()
       this.sendResize()
+    })
+
+    // Focus terminal when container is clicked
+    this.el.addEventListener("click", () => {
+      this.terminal.focus()
+    })
+
+    // Also focus when terminal becomes visible (e.g., after being hidden)
+    this.el.addEventListener("focusin", () => {
+      this.terminal.focus()
     })
   },
 
@@ -153,6 +169,43 @@ export default {
         this.terminal.clear()
       }
     })
+
+    // Handle request to capture buffer before popout
+    this.handleEvent("terminal:capture_buffer", ({ id, session_id }) => {
+      if (id === this.terminalId && this.terminal && this.serializeAddon) {
+        // Serialize the terminal buffer
+        const serialized = this.serializeAddon.serialize()
+        // Store in localStorage keyed by session_id so popout can retrieve it
+        const storageKey = `terminal_buffer_${session_id}`
+        try {
+          localStorage.setItem(storageKey, serialized)
+          console.log(`[TerminalHook] Saved buffer for session ${session_id} (${serialized.length} chars)`)
+        } catch (e) {
+          console.warn("[TerminalHook] Failed to save buffer to localStorage:", e)
+        }
+        // Signal back that buffer is captured
+        this.pushEvent("terminal_buffer_captured", { id: this.terminalId, session_id })
+      }
+    })
+  },
+
+  // Restore buffer from localStorage if available (for popout handoff)
+  restoreBufferIfAvailable() {
+    if (!this.sessionId) return
+
+    const storageKey = `terminal_buffer_${this.sessionId}`
+    try {
+      const savedBuffer = localStorage.getItem(storageKey)
+      if (savedBuffer) {
+        console.log(`[TerminalHook] Restoring buffer for session ${this.sessionId} (${savedBuffer.length} chars)`)
+        // Write the saved content to the terminal
+        this.terminal.write(savedBuffer)
+        // Clean up - remove from localStorage after restoring
+        localStorage.removeItem(storageKey)
+      }
+    } catch (e) {
+      console.warn("[TerminalHook] Failed to restore buffer from localStorage:", e)
+    }
   },
 
   setupResizeObserver() {

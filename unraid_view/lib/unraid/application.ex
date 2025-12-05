@@ -23,6 +23,7 @@ defmodule Unraid.Application do
       # Terminal session management
       {Registry, keys: :unique, name: Unraid.Terminal.Registry},
       {Unraid.Terminal.TerminalSupervisor, []},
+      {Unraid.Terminal.SessionCleanup, []},
       # Start to serve requests, typically the last entry
       UnraidWeb.Endpoint
     ]

@@ -138,18 +138,30 @@ defmodule Unraid.Terminal do
   @doc """
   Subscribes to a terminal session's output.
 
+  This also registers the calling process as a subscriber to the session,
+  keeping the session alive as long as this process is subscribed.
+
   The subscriber will receive:
     * `{:terminal_output, session_id, data}` - Output from the PTY
     * `{:terminal_exit, session_id, exit_code}` - When the PTY exits
   """
   def subscribe(session_id) do
+    # Register as session subscriber (keeps session alive)
+    TerminalSession.add_subscriber(session_id, self())
+    # Subscribe to PubSub for output
     PubSub.subscribe(Unraid.PubSub, topic(session_id))
   end
 
   @doc """
   Unsubscribes from a terminal session's output.
+
+  This also deregisters the calling process from the session's subscriber list.
+  If no subscribers remain, the session may be cleaned up after a timeout.
   """
   def unsubscribe(session_id) do
+    # Deregister as session subscriber
+    TerminalSession.remove_subscriber(session_id, self())
+    # Unsubscribe from PubSub
     PubSub.unsubscribe(Unraid.PubSub, topic(session_id))
   end
 
@@ -166,7 +178,8 @@ defmodule Unraid.Terminal do
       args: args,
       owner: opts[:owner] || self(),
       cols: opts[:cols],
-      rows: opts[:rows]
+      rows: opts[:rows],
+      permanent: opts[:permanent] || false
     ]
 
     case TerminalSupervisor.start_session(session_opts) do
