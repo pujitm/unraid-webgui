@@ -432,6 +432,27 @@ defmodule Unraid.Docker do
   end
 
   @doc """
+  Create a new container from a template.
+
+  Unlike `update_container_settings/2`, this does not stop or remove an existing
+  container. Use this for creating brand new containers.
+
+  Emits an event to the event log with progress updates.
+
+  ## Options
+    - `:pull_image` - Pull the image before creating (default: false)
+    - `:start_after_create` - Start container after creating (default: true)
+    - `:create_paths` - Create host paths for volumes if missing (default: true)
+    - `:progress_callback` - Function called with `(step, step_number)` for progress updates
+
+  Returns `{:ok, result}` or `{:error, reason}`.
+  The result includes `:event_id` which can be used to track the event in the event log.
+  """
+  def create_container(%Template{} = template, opts \\ []) do
+    ContainerUpdater.create_new_container(template, opts)
+  end
+
+  @doc """
   Preview the docker create command for a template without executing.
 
   Useful for showing users what command will be run.

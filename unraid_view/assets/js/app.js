@@ -137,6 +137,43 @@ window.addEventListener("phx:console:popout", (event) => {
   window.open(url, "_blank", "width=900,height=650,menubar=no,toolbar=no,location=no,status=no")
 })
 
+// Handle copy to clipboard events globally
+window.addEventListener("phx:copy", (event) => {
+  const text = event.detail?.text
+  if (!text) return
+
+  const button = event.target.closest(".copy-button")
+
+  const copyToClipboard = () => {
+    // Use clipboard API if available (requires secure context)
+    if (navigator.clipboard?.writeText) {
+      return navigator.clipboard.writeText(text)
+    } else {
+      // Fallback for non-secure contexts (e.g., HTTP)
+      const textarea = document.createElement("textarea")
+      textarea.value = text
+      textarea.style.position = "fixed"
+      textarea.style.opacity = "0"
+      document.body.appendChild(textarea)
+      textarea.select()
+      document.execCommand("copy")
+      document.body.removeChild(textarea)
+      return Promise.resolve()
+    }
+  }
+
+  copyToClipboard()
+    .then(() => {
+      if (button) {
+        button.classList.add("copied")
+        setTimeout(() => button.classList.remove("copied"), 2000)
+      }
+    })
+    .catch((err) => {
+      console.error("Failed to copy to clipboard:", err)
+    })
+})
+
 // expose liveSocket on window for web console debug logs and latency simulation:
 // >> liveSocket.enableDebug()
 // >> liveSocket.enableLatencySim(1000)  // enabled for duration of browser session

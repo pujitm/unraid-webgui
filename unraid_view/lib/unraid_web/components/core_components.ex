@@ -436,6 +436,37 @@ defmodule UnraidWeb.CoreComponents do
     """
   end
 
+@doc """
+  Renders a copy-to-clipboard button.
+
+  Uses JS.dispatch to trigger a global "phx:copy" event that copies text to clipboard.
+  Shows visual feedback by toggling between default and copied states.
+
+  ## Examples
+
+      <.copy_button text="Hello world" />
+      <.copy_button text={@some_value} class="btn-sm" />
+  """
+  attr :text, :string, required: true, doc: "the text to copy to clipboard"
+  attr :class, :string, default: nil, doc: "additional button classes"
+
+  def copy_button(assigns) do
+    ~H"""
+    <button
+      type="button"
+      class={["btn btn-ghost copy-button", @class]}
+      phx-click={JS.dispatch("phx:copy", detail: %{text: @text})}
+    >
+      <span class="copy-default">
+        <.icon name="hero-clipboard-document" class="w-4 h-4" /> Copy
+      </span>
+      <span class="copy-success">
+        <.icon name="hero-check" class="w-4 h-4" /> Copied!
+      </span>
+    </button>
+    """
+  end
+
   ## JS Commands
 
   def show(js \\ %JS{}, selector) do
