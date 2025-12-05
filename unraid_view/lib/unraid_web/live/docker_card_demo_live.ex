@@ -17,11 +17,9 @@ defmodule UnraidWeb.DockerCardDemoLive do
   alias Unraid.Docker
   alias Unraid.Docker.StatsServer
   alias Unraid.Docker.TailscaleService
-  alias Unraid.Terminal
   alias Unraid.Tree
 
   import UnraidWeb.CardComponents
-  import UnraidWeb.TerminalComponents
 
   @impl true
   def mount(_params, _session, socket) do
@@ -37,9 +35,8 @@ defmodule UnraidWeb.DockerCardDemoLive do
       |> assign(:dragging?, false)
       |> assign(:tailscale_cache, %{})
       |> assign(:tailscale_loading, MapSet.new())
-      # Console sessions: %{container_id => %{session_id: sid, visible: bool}}
+      # Console sessions: %{container_id => %{active: bool, visible: bool, session_id: sid, child_pid: pid}}
       |> assign(:console_sessions, %{})
-      |> assign(:pending_popout, nil)
 
     if connected?(socket) do
       Docker.subscribe()
@@ -51,10 +48,8 @@ defmodule UnraidWeb.DockerCardDemoLive do
   end
 
   @impl true
-  def terminate(_reason, socket) do
+  def terminate(_reason, _socket) do
     StatsServer.release_stats()
-    # Close all console sessions
-    close_all_console_sessions(socket)
     :ok
   end
 
@@ -147,6 +142,7 @@ defmodule UnraidWeb.DockerCardDemoLive do
             />
           <% else %>
             <.container_row
+              socket={@socket}
               container={slot.row}
               selected={slot.selected}
               expanded={slot.expanded}
@@ -196,6 +192,7 @@ defmodule UnraidWeb.DockerCardDemoLive do
   # Container Row Component
   # ---------------------------------------------------------------------------
 
+  attr :socket, :any, required: true
   attr :container, :map, required: true
   attr :selected, :boolean, default: false
   attr :expanded, :boolean, default: false
@@ -282,7 +279,8 @@ defmodule UnraidWeb.DockerCardDemoLive do
 
       <%!-- Console Terminal - rendered outside card_expanded to persist across collapse --%>
       <.persistent_console
-        :if={@console_session && @console_session.session_id}
+        :if={@console_session && @console_session.active}
+        socket={@socket}
         container={@container}
         console_session={@console_session}
         expanded={@expanded}
@@ -671,10 +669,11 @@ defmodule UnraidWeb.DockerCardDemoLive do
   attr :console_session, :map, default: nil
 
   defp console_section(assigns) do
-    # Determine if console is visible
+    # Determine if console is active and visible
+    active = assigns.console_session && assigns.console_session.active
     visible = assigns.console_session && assigns.console_session.visible
-    session_id = assigns.console_session && assigns.console_session.session_id
-    assigns = assign(assigns, visible: visible, session_id: session_id)
+    session_id = assigns.console_session && assigns.console_session[:session_id]
+    assigns = assign(assigns, active: active, visible: visible, session_id: session_id)
 
     ~H"""
     <div>
@@ -682,19 +681,9 @@ defmodule UnraidWeb.DockerCardDemoLive do
         <div class="flex items-center gap-2">
           <.icon name="hero-command-line" class="w-5 h-5 opacity-60" />
           <span class="font-medium uppercase text-sm">Console</span>
-          <span :if={@session_id} class="badge badge-xs badge-success">Active</span>
+          <span :if={@active} class="badge badge-xs badge-success">Active</span>
         </div>
         <div class="flex items-center gap-2">
-          <button
-            :if={@session_id}
-            type="button"
-            class="btn btn-ghost btn-xs"
-            phx-click="console_popout"
-            phx-value-id={@container.id}
-            title="Pop out to new window"
-          >
-            <.icon name="hero-arrow-top-right-on-square" class="w-4 h-4" />
-          </button>
           <button
             type="button"
             class={[
@@ -705,10 +694,10 @@ defmodule UnraidWeb.DockerCardDemoLive do
             phx-value-id={@container.id}
           >
             <.icon name={if @visible, do: "hero-chevron-up", else: "hero-play"} class="w-4 h-4" />
-            {if @visible, do: "Hide", else: if(@session_id, do: "Show", else: "Open Console")}
+            {if @visible, do: "Hide", else: if(@active, do: "Show", else: "Open Console")}
           </button>
           <button
-            :if={@session_id}
+            :if={@active}
             type="button"
             class="btn btn-ghost btn-sm btn-error"
             phx-click="console_close"
@@ -721,11 +710,11 @@ defmodule UnraidWeb.DockerCardDemoLive do
       </div>
 
       <%!-- Note: Terminal is rendered by persistent_console outside card_expanded --%>
-      <div :if={@visible && @session_id} class="text-sm opacity-60 italic">
+      <div :if={@visible && @active} class="text-sm opacity-60 italic">
         Console session active below
       </div>
 
-      <div :if={!@session_id} class="text-sm opacity-60">
+      <div :if={!@active} class="text-sm opacity-60">
         Click "Open Console" to access the container shell ({@container.shell || "sh"})
       </div>
     </div>
@@ -736,16 +725,16 @@ defmodule UnraidWeb.DockerCardDemoLive do
   # Persistent Console Component (rendered outside card_expanded to survive collapse)
   # ---------------------------------------------------------------------------
 
+  attr :socket, :any, required: true
   attr :container, :map, required: true
   attr :console_session, :map, required: true
   attr :expanded, :boolean, default: false
 
   defp persistent_console(assigns) do
     visible = assigns.console_session.visible
-    session_id = assigns.console_session.session_id
     # Show terminal if: session exists AND (card expanded AND console visible)
     show = visible && assigns.expanded
-    assigns = assign(assigns, visible: visible, session_id: session_id, show: show)
+    assigns = assign(assigns, visible: visible, show: show)
 
     ~H"""
     <div
@@ -756,13 +745,19 @@ defmodule UnraidWeb.DockerCardDemoLive do
     >
       <div class="p-4">
         <div class="rounded-lg overflow-hidden border border-base-300">
-          <.terminal
-            id={"console-#{@container.id}"}
-            session_id={@session_id}
-            class="h-80"
-            theme="dark"
-            font_size={13}
-          />
+          <%= live_render(@socket, UnraidWeb.EmbeddedTerminalLive,
+            id: "console-#{@container.id}",
+            session: %{
+              "type" => "docker",
+              "container" => @container.name,
+              "shell" => @container.shell || "sh",
+              "parent_pid" => self(),
+              "class" => "h-80",
+              "theme" => "dark",
+              "font_size" => 13,
+              "show_popout_button" => true
+            }
+          ) %>
         </div>
       </div>
     </div>
@@ -858,39 +853,33 @@ defmodule UnraidWeb.DockerCardDemoLive do
     {:noreply, socket}
   end
 
-  # Terminal output - forward to the terminal component via push_event
+  # Handle terminal session started notification from child LiveView
   @impl true
-  def handle_info({:terminal_output, session_id, data}, socket) do
-    # Find which container this session belongs to
-    container_id = find_container_for_session(socket, session_id)
+  def handle_info({:terminal_started, id, session_id, child_pid}, socket) do
+    # Extract container_id from "console-<container_id>"
+    container_id = String.replace_prefix(id, "console-", "")
 
-    if container_id do
-      socket =
-        push_event(socket, "terminal:output", %{
-          id: "console-#{container_id}",
-          data: Base.encode64(data)
-        })
+    case Map.get(socket.assigns.console_sessions, container_id) do
+      nil ->
+        {:noreply, socket}
 
-      {:noreply, socket}
-    else
-      {:noreply, socket}
+      session ->
+        # Store session_id and child_pid for popout handoff
+        updated_session =
+          session
+          |> Map.put(:session_id, session_id)
+          |> Map.put(:child_pid, child_pid)
+
+        sessions = Map.put(socket.assigns.console_sessions, container_id, updated_session)
+        {:noreply, assign(socket, :console_sessions, sessions)}
     end
   end
 
-  # Terminal exit - notify user and close session
-  @impl true
-  def handle_info({:terminal_exit, session_id, exit_code}, socket) do
-    container_id = find_container_for_session(socket, session_id)
-
-    if container_id do
-      socket =
-        socket
-        |> push_event("terminal:exit", %{id: "console-#{container_id}", code: exit_code})
-
-      {:noreply, socket}
-    else
-      {:noreply, socket}
-    end
+  # Handle terminal closed notification from child LiveView (e.g., after popout)
+  def handle_info({:terminal_closed, id}, socket) do
+    # Extract container_id from "console-<container_id>"
+    container_id = String.replace_prefix(id, "console-", "")
+    {:noreply, close_console_session(socket, container_id)}
   end
 
   @impl true
@@ -1010,7 +999,7 @@ defmodule UnraidWeb.DockerCardDemoLive do
       is_nil(container) or container.state != :running ->
         {:noreply, socket}
 
-      # Console exists and is visible - hide it (but keep session)
+      # Console exists and is visible - hide it (but keep child LiveView alive)
       Map.has_key?(console_sessions, id) and console_sessions[id].visible ->
         updated_session = %{console_sessions[id] | visible: false}
         {:noreply, assign(socket, :console_sessions, Map.put(console_sessions, id, updated_session))}
@@ -1020,113 +1009,11 @@ defmodule UnraidWeb.DockerCardDemoLive do
         updated_session = %{console_sessions[id] | visible: true}
         {:noreply, assign(socket, :console_sessions, Map.put(console_sessions, id, updated_session))}
 
-      # No console exists - create one
+      # No console exists - create one (child LiveView will start the session)
       true ->
-        shell = container.shell || "sh"
-
-        case Terminal.start_docker_console(container.name, shell: shell, owner: self()) do
-          {:ok, session_id} ->
-            Terminal.subscribe(session_id)
-            new_session = %{session_id: session_id, visible: true, container_name: container.name}
-            {:noreply, assign(socket, :console_sessions, Map.put(console_sessions, id, new_session))}
-
-          {:error, _reason} ->
-            {:noreply, put_flash(socket, :error, "Failed to start console")}
-        end
+        new_session = %{active: true, visible: true, container_name: container.name}
+        {:noreply, assign(socket, :console_sessions, Map.put(console_sessions, id, new_session))}
     end
-  end
-
-  @impl true
-  def handle_event("console_popout", %{"id" => id}, socket) do
-    require Logger
-    container = Enum.find(socket.assigns.containers, &(&1.id == id))
-    session = Map.get(socket.assigns.console_sessions, id)
-
-    if container && session do
-      Logger.info("[DockerCardDemoLive] Popping out session #{session.session_id} for #{container.name}")
-
-      # First, tell the terminal to capture its buffer to localStorage
-      # The actual popout will happen when we receive terminal_buffer_captured
-      socket =
-        socket
-        |> assign(:pending_popout, %{container: container, session: session})
-        |> push_event("terminal:capture_buffer", %{
-          id: "console-#{id}",
-          session_id: session.session_id
-        })
-
-      {:noreply, socket}
-    else
-      Logger.warning("[DockerCardDemoLive] console_popout: no session found for container #{id}")
-      {:noreply, socket}
-    end
-  end
-
-  @impl true
-  def handle_event("terminal_buffer_captured", %{"session_id" => session_id}, socket) do
-    require Logger
-
-    case socket.assigns[:pending_popout] do
-      %{container: container, session: session} when session.session_id == session_id ->
-        Logger.info("[DockerCardDemoLive] Buffer captured, opening popout for #{session_id}")
-
-        # Unsubscribe from the session (session stays alive for popout to claim)
-        Terminal.unsubscribe(session.session_id)
-
-        # Remove from our console_sessions (we're handing it off)
-        socket =
-          socket
-          |> assign(:console_sessions, Map.delete(socket.assigns.console_sessions, container.id))
-          |> assign(:pending_popout, nil)
-
-        # Open popout with session_id so it can claim the existing session
-        url = "/docker/#{container.name}/console?session=#{session.session_id}"
-        {:noreply, push_event(socket, "console:popout", %{url: url})}
-
-      _ ->
-        {:noreply, socket}
-    end
-  end
-
-  @impl true
-  def handle_event("terminal_input", %{"id" => terminal_id, "data" => data}, socket) do
-    # terminal_id is "console-<container_id>"
-    container_id = String.replace_prefix(terminal_id, "console-", "")
-
-    case Map.get(socket.assigns.console_sessions, container_id) do
-      %{session_id: session_id} ->
-        Terminal.send_input(session_id, data)
-        {:noreply, socket}
-
-      _ ->
-        {:noreply, socket}
-    end
-  end
-
-  @impl true
-  def handle_event("terminal_resize", %{"id" => terminal_id, "cols" => cols, "rows" => rows}, socket) do
-    container_id = String.replace_prefix(terminal_id, "console-", "")
-
-    case Map.get(socket.assigns.console_sessions, container_id) do
-      %{session_id: session_id} ->
-        Terminal.resize(session_id, cols, rows)
-        {:noreply, socket}
-
-      _ ->
-        {:noreply, socket}
-    end
-  end
-
-  @impl true
-  def handle_event("terminal_ready", %{"id" => _terminal_id}, socket) do
-    # Terminal is ready to receive output - nothing special needed
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_event("terminal_close", %{"id" => terminal_id}, socket) do
-    container_id = String.replace_prefix(terminal_id, "console-", "")
-    {:noreply, close_console_session(socket, container_id)}
   end
 
   @impl true
@@ -1264,35 +1151,9 @@ defmodule UnraidWeb.DockerCardDemoLive do
   # Console Session Helpers
   # ---------------------------------------------------------------------------
 
-  # Find which container a terminal session belongs to
-  defp find_container_for_session(socket, session_id) do
-    Enum.find_value(socket.assigns.console_sessions, fn {container_id, session} ->
-      if session.session_id == session_id, do: container_id, else: nil
-    end)
-  end
-
-  # Close a console session and clean up resources
+  # Close a console session by removing it from tracking
+  # The child LiveView will handle cleanup when it's removed from DOM
   defp close_console_session(socket, container_id) do
-    case Map.get(socket.assigns.console_sessions, container_id) do
-      %{session_id: session_id} ->
-        # Unsubscribe and close the terminal session
-        Terminal.unsubscribe(session_id)
-        Terminal.close(session_id)
-        # Remove from console_sessions
-        assign(socket, :console_sessions, Map.delete(socket.assigns.console_sessions, container_id))
-
-      nil ->
-        socket
-    end
-  end
-
-  # Close all console sessions (used during terminate)
-  defp close_all_console_sessions(socket) do
-    Enum.each(socket.assigns.console_sessions, fn {_id, session} ->
-      Terminal.unsubscribe(session.session_id)
-      Terminal.close(session.session_id)
-    end)
-
-    assign(socket, :console_sessions, %{})
+    assign(socket, :console_sessions, Map.delete(socket.assigns.console_sessions, container_id))
   end
 end

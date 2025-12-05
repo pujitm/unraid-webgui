@@ -30,6 +30,7 @@ defmodule UnraidWeb.Router do
       live "/docker/:name/edit", DockerEditLive
       live "/docker/:name/console", DockerConsoleLive
       live "/terminal", TerminalLive
+      live "/terminal/sessions/:session_id", TerminalSessionLive
       live "/vms", VmLive
       live "/events", EventLogLive
     end
