@@ -113,6 +113,41 @@ defmodule Unraid.Docker.Template do
   ]
 
   # ---------------------------------------------------------------------------
+  # Constructor
+  # ---------------------------------------------------------------------------
+
+  @doc """
+  Create a new empty template with sensible defaults.
+  """
+  def new do
+    %__MODULE__{
+      name: "",
+      repository: "",
+      registry: nil,
+      network: "bridge",
+      my_ip: nil,
+      shell: "sh",
+      privileged: false,
+      extra_params: nil,
+      post_args: nil,
+      cpuset: nil,
+      web_ui: nil,
+      icon: nil,
+      overview: nil,
+      category: nil,
+      support: nil,
+      project: nil,
+      template_url: nil,
+      donate_text: nil,
+      donate_link: nil,
+      requires: nil,
+      date_installed: nil,
+      configs: [],
+      tailscale: nil
+    }
+  end
+
+  # ---------------------------------------------------------------------------
   # XML Parsing
   # ---------------------------------------------------------------------------
 

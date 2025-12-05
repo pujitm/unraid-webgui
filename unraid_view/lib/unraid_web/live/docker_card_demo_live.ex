@@ -65,7 +65,10 @@ defmodule UnraidWeb.DockerCardDemoLive do
           </p>
         </div>
         <div class="flex gap-2">
-          <a href="/docker" class="btn btn-sm btn-ghost">
+          <.link navigate={~p"/docker/add"} class="btn btn-sm btn-primary">
+            <.icon name="hero-plus" class="w-4 h-4" /> Add Container
+          </.link>
+          <a href="/docker/table" class="btn btn-sm btn-ghost">
             <.icon name="hero-table-cells" class="w-4 h-4" /> Table View
           </a>
           <button

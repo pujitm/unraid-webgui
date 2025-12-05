@@ -25,10 +25,11 @@ defmodule UnraidWeb.Router do
     pipe_through :browser
 
     live_session :dashboard, layout: {UnraidWeb.Layouts, :wide} do
-      live "/docker", DockerLive
+      live "/docker", DockerCardDemoLive
+      live "/docker/table", DockerLive
       live "/docker/card", DockerCardDemoLive
+      live "/docker/add", DockerAddLive
       live "/docker/:name/edit", DockerEditLive
-      live "/docker/:name/console", DockerConsoleLive
       live "/terminal", TerminalLive
       live "/terminal/sessions/:session_id", TerminalSessionLive
       live "/vms", VmLive

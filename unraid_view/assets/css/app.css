@@ -472,3 +472,15 @@
     margin-right: 0;
   }
 }
+
+/* -------------------------------------------------------------------------- */
+/* Copy button component                                                       */
+/* -------------------------------------------------------------------------- */
+
+/* Default state: show copy icon, hide success */
+.copy-default { display: inline-flex; align-items: center; gap: 0.25rem; }
+.copy-success { display: none; align-items: center; gap: 0.25rem; }
+
+/* Copied state: hide copy icon, show success */
+.copied .copy-default { display: none; }
+.copied .copy-success { display: inline-flex; }
