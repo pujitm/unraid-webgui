@@ -59,6 +59,7 @@ defmodule Unraid.MixProject do
       {:dns_cluster, "~> 0.1.1"},
       {:bandit, "~> 1.5"},
       {:eini, "~> 1.2"},
+      {:file_system, "~> 1.0"},
       {:ex_docker_engine_api, "~> 1.4"},
       {:expty, "~> 0.2"},
       {:sweet_xml, "~> 0.7"},

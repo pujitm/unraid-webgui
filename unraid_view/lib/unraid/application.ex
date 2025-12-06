@@ -20,6 +20,8 @@ defmodule Unraid.Application do
       {Unraid.Docker.TailscaleService, []},
       # Event log system
       {Unraid.EventLog.Writer, []},
+      # Log subsystem
+      Unraid.Log.Supervisor,
       # Terminal session management
       {Registry, keys: :unique, name: Unraid.Terminal.Registry},
       {Unraid.Terminal.TerminalSupervisor, []},
