@@ -28,6 +28,7 @@ import ChartToggleHook from "./chart_toggle_hook"
 import RichTableHook from "./rich_table_hook"
 import CardListHook from "./card_list_hook"
 import TerminalHook from "./terminal_hook"
+import LogViewerScroll from "./log_viewer_hook"
 
 /**
  * RichTableSearchInput - Companion hook for rich_table search functionality
@@ -115,7 +116,8 @@ const Hooks = {
   CardList: CardListHook,
   RichTableSearchInput: RichTableSearchInputHook,
   Terminal: TerminalHook,
-  EventLogScroll: EventLogScrollHook
+  EventLogScroll: EventLogScrollHook,
+  LogViewerScroll: LogViewerScroll
 }
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
