@@ -14,14 +14,33 @@ defmodule UnraidWeb.TerminalLive do
 
   @impl true
   def mount(_params, _session, socket) do
+    if connected?(socket) do
+      Terminal.subscribe_sessions()
+    end
+
+    active_sessions = load_active_sessions()
+
     socket =
       assign(socket,
         terminals: %{},
         next_terminal_num: 1,
-        page_title: "Terminal"
+        page_title: "Terminal",
+        active_sessions: active_sessions
       )
 
     {:ok, socket}
+  end
+
+  defp load_active_sessions do
+    Terminal.list_sessions()
+    |> Enum.map(fn session_id ->
+      case Terminal.get_info(session_id) do
+        {:ok, info} -> info
+        {:error, _} -> nil
+      end
+    end)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.sort_by(& &1.started_at, {:desc, DateTime})
   end
 
   @impl true
@@ -41,22 +60,72 @@ defmodule UnraidWeb.TerminalLive do
       <div class="flex items-center justify-between">
         <h1 class="text-2xl font-bold">Terminal</h1>
         <div class="flex gap-2">
-          <button
-            phx-click="open_shell"
-            class="btn btn-primary btn-sm"
-          >
+          <button phx-click="refresh_sessions" class="btn btn-ghost btn-sm">
+            <.icon name="hero-arrow-path" class="w-4 h-4" />
+          </button>
+          <button phx-click="open_shell" class="btn btn-primary btn-sm">
             New Shell
           </button>
-          <button
-            phx-click="open_iex"
-            class="btn btn-secondary btn-sm"
-          >
+          <button phx-click="open_iex" class="btn btn-secondary btn-sm">
             IEx REPL
           </button>
         </div>
       </div>
 
-      <div :if={map_size(@terminals) == 0} class="text-center py-12 text-base-content/60">
+      <%!-- Active Sessions List --%>
+      <div :if={@active_sessions != []} class="card bg-base-200">
+        <div class="card-body p-4">
+          <h2 class="card-title text-sm mb-3">
+            Active Sessions
+            <span class="badge badge-ghost badge-sm">{length(@active_sessions)}</span>
+          </h2>
+          <div class="overflow-x-auto">
+            <table class="table table-sm">
+              <thead>
+                <tr class="text-xs opacity-60 uppercase">
+                  <th>Session ID</th>
+                  <th>Command</th>
+                  <th>Started</th>
+                  <th>Subscribers</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr :for={session <- @active_sessions}>
+                  <td class="font-mono text-xs">{String.slice(session.id, 0, 12)}...</td>
+                  <td class="font-mono text-xs">
+                    {session_label(session)}
+                  </td>
+                  <td class="text-xs opacity-70">
+                    {format_time_ago(session.started_at)}
+                  </td>
+                  <td class="text-center">
+                    <span class="badge badge-ghost badge-xs">{session.subscriber_count}</span>
+                  </td>
+                  <td class="text-right">
+                    <button
+                      :if={!session_attached?(@terminals, session.id)}
+                      phx-click="attach_session"
+                      phx-value-id={session.id}
+                      class="btn btn-ghost btn-xs"
+                    >
+                      Open
+                    </button>
+                    <span
+                      :if={session_attached?(@terminals, session.id)}
+                      class="text-xs text-success"
+                    >
+                      Attached
+                    </span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div :if={map_size(@terminals) == 0 && @active_sessions == []} class="text-center py-12 text-base-content/60">
         <p>No terminals open. Click "New Shell" to start a terminal session.</p>
       </div>
 
@@ -91,9 +160,74 @@ defmodule UnraidWeb.TerminalLive do
     """
   end
 
+  defp session_label(%{command: command, args: args}) do
+    basename = Path.basename(command || "")
+
+    cond do
+      String.contains?(basename, "docker") -> "docker #{Enum.join(args, " ")}"
+      String.contains?(basename, "iex") -> "iex"
+      true -> basename
+    end
+  end
+
+  defp session_attached?(terminals, session_id) do
+    Enum.any?(terminals, fn {_id, t} -> t.session_id == session_id end)
+  end
+
+  defp format_time_ago(nil), do: "—"
+
+  defp format_time_ago(datetime) do
+    diff = DateTime.diff(DateTime.utc_now(), datetime, :second)
+
+    cond do
+      diff < 60 -> "#{diff}s ago"
+      diff < 3600 -> "#{div(diff, 60)}m ago"
+      diff < 86400 -> "#{div(diff, 3600)}h ago"
+      true -> Calendar.strftime(datetime, "%b %d, %H:%M")
+    end
+  end
+
   # ---------------------------------------------------------------------------
   # Event Handlers
   # ---------------------------------------------------------------------------
+
+  @impl true
+  def handle_event("refresh_sessions", _params, socket) do
+    {:noreply, assign(socket, :active_sessions, load_active_sessions())}
+  end
+
+  @impl true
+  def handle_event("attach_session", %{"id" => session_id}, socket) do
+    # Check if already attached
+    if session_attached?(socket.assigns.terminals, session_id) do
+      {:noreply, socket}
+    else
+      Terminal.subscribe(session_id)
+
+      terminal_id = "terminal-#{socket.assigns.next_terminal_num}"
+
+      # Get session info for label
+      label =
+        case Terminal.get_info(session_id) do
+          {:ok, info} -> "#{session_label(info)} (attached)"
+          {:error, _} -> "Session ##{socket.assigns.next_terminal_num}"
+        end
+
+      terminal = %{
+        session_id: session_id,
+        label: label,
+        type: :attached
+      }
+
+      socket =
+        socket
+        |> update(:terminals, &Map.put(&1, terminal_id, terminal))
+        |> update(:next_terminal_num, &(&1 + 1))
+        |> assign(:active_sessions, load_active_sessions())
+
+      {:noreply, socket}
+    end
+  end
 
   @impl true
   def handle_event("open_shell", _params, socket) do
@@ -113,6 +247,7 @@ defmodule UnraidWeb.TerminalLive do
           socket
           |> update(:terminals, &Map.put(&1, terminal_id, terminal))
           |> update(:next_terminal_num, &(&1 + 1))
+          |> assign(:active_sessions, load_active_sessions())
 
         {:noreply, socket}
 
@@ -139,6 +274,7 @@ defmodule UnraidWeb.TerminalLive do
           socket
           |> update(:terminals, &Map.put(&1, terminal_id, terminal))
           |> update(:next_terminal_num, &(&1 + 1))
+          |> assign(:active_sessions, load_active_sessions())
 
         {:noreply, socket}
 
@@ -153,11 +289,19 @@ defmodule UnraidWeb.TerminalLive do
       nil ->
         {:noreply, socket}
 
-      %{session_id: session_id} ->
+      %{session_id: session_id, type: type} ->
         Terminal.unsubscribe(session_id)
-        Terminal.close(session_id)
 
-        socket = update(socket, :terminals, &Map.delete(&1, terminal_id))
+        # Only close the session if we created it (not attached)
+        if type != :attached do
+          Terminal.close(session_id)
+        end
+
+        socket =
+          socket
+          |> update(:terminals, &Map.delete(&1, terminal_id))
+          |> assign(:active_sessions, load_active_sessions())
+
         {:noreply, socket}
     end
   end
@@ -197,6 +341,26 @@ defmodule UnraidWeb.TerminalLive do
   # ---------------------------------------------------------------------------
   # PubSub Message Handlers
   # ---------------------------------------------------------------------------
+
+  @impl true
+  def handle_info({:session_started, _session_id}, socket) do
+    {:noreply, assign(socket, :active_sessions, load_active_sessions())}
+  end
+
+  @impl true
+  def handle_info({:session_closed, _session_id}, socket) do
+    {:noreply, assign(socket, :active_sessions, load_active_sessions())}
+  end
+
+  @impl true
+  def handle_info({:subscriber_added, _session_id}, socket) do
+    {:noreply, assign(socket, :active_sessions, load_active_sessions())}
+  end
+
+  @impl true
+  def handle_info({:subscriber_removed, _session_id}, socket) do
+    {:noreply, assign(socket, :active_sessions, load_active_sessions())}
+  end
 
   @impl true
   def handle_info({:terminal_output, session_id, data}, socket) do

@@ -39,6 +39,25 @@ defmodule Unraid.Terminal.TerminalSession do
   # Public API
   # ---------------------------------------------------------------------------
 
+  @doc """
+  Custom child_spec with `restart: :temporary`.
+
+  Sessions must not restart after being stopped - otherwise cleanup would
+  trigger an infinite loop: cleanup stops session → supervisor restarts it
+  with same ID → cleanup stops it again → etc.
+
+  Sessions are intentionally ephemeral: they exist while in use and are
+  cleaned up when orphaned. If a session crashes unexpectedly, it's better
+  to let it die than restart in an unknown state.
+  """
+  def child_spec(opts) do
+    %{
+      id: opts[:id],
+      start: {__MODULE__, :start_link, [opts]},
+      restart: :temporary
+    }
+  end
+
   def start_link(opts) do
     GenServer.start_link(__MODULE__, opts, name: via_tuple(opts[:id]))
   end
@@ -140,6 +159,7 @@ defmodule Unraid.Terminal.TerminalSession do
     case spawn_pty(state) do
       {:ok, pty} ->
         Logger.debug("[TerminalSession] Started session #{state.id}")
+        broadcast_session_event(:session_started, state.id)
         {:noreply, %{state | pty: pty}}
 
       {:error, reason} ->
@@ -183,6 +203,7 @@ defmodule Unraid.Terminal.TerminalSession do
       new_subscribers = Map.put(state.subscribers, pid, ref)
 
       Logger.debug("[TerminalSession] Added subscriber #{inspect(pid)} to session #{state.id}")
+      broadcast_session_event(:subscriber_added, state.id)
 
       {:noreply,
        %{state | subscribers: new_subscribers, last_activity: System.monotonic_time(:second)}}
@@ -203,6 +224,8 @@ defmodule Unraid.Terminal.TerminalSession do
           "[TerminalSession] Removed subscriber #{inspect(pid)} from session #{state.id}"
         )
 
+        broadcast_session_event(:subscriber_removed, state.id)
+
         {:noreply, %{state | subscribers: new_subscribers}}
     end
   end
@@ -211,6 +234,8 @@ defmodule Unraid.Terminal.TerminalSession do
   def handle_call(:get_info, _from, state) do
     info = %{
       id: state.id,
+      command: state.command,
+      args: state.args,
       subscriber_count: map_size(state.subscribers),
       permanent: state.permanent,
       last_activity: state.last_activity,
@@ -268,7 +293,7 @@ defmodule Unraid.Terminal.TerminalSession do
   end
 
   @impl true
-  def terminate(_reason, %{pty: pty}) when not is_nil(pty) do
+  def terminate(_reason, %{id: id, pty: pty}) when not is_nil(pty) do
     # SIGKILL = 9 (force kill to ensure cleanup)
     # Using SIGKILL instead of SIGTERM to ensure the process dies immediately
     try do
@@ -277,6 +302,12 @@ defmodule Unraid.Terminal.TerminalSession do
       _, _ -> :ok
     end
 
+    broadcast_session_event(:session_closed, id)
+    :ok
+  end
+
+  def terminate(_reason, %{id: id}) do
+    broadcast_session_event(:session_closed, id)
     :ok
   end
 
@@ -335,6 +366,10 @@ defmodule Unraid.Terminal.TerminalSession do
 
   defp broadcast_exit(session_id, exit_code) do
     PubSub.broadcast(Unraid.PubSub, topic(session_id), {:terminal_exit, session_id, exit_code})
+  end
+
+  defp broadcast_session_event(event, session_id) do
+    PubSub.broadcast(Unraid.PubSub, "terminal:sessions", {event, session_id})
   end
 
   defp topic(session_id) do

@@ -136,6 +136,51 @@ defmodule Unraid.Terminal do
   end
 
   @doc """
+  Lists all active terminal session IDs.
+  """
+  def list_sessions do
+    TerminalSupervisor.list_sessions()
+  end
+
+  @doc """
+  Gets information about a terminal session.
+
+  Returns `{:ok, info}` or `{:error, :not_found}`.
+
+  Info includes:
+    * `:id` - Session ID
+    * `:command` - Command being run
+    * `:args` - Command arguments
+    * `:subscriber_count` - Number of active subscribers
+    * `:permanent` - Whether session is permanent
+    * `:last_activity` - Last activity timestamp
+    * `:started_at` - Session start timestamp
+  """
+  def get_info(session_id) do
+    TerminalSession.get_info(session_id)
+  end
+
+  @doc """
+  Subscribes to session lifecycle events.
+
+  The subscriber will receive:
+    * `{:session_started, session_id}` - When a new session starts
+    * `{:session_closed, session_id}` - When a session closes
+    * `{:subscriber_added, session_id}` - When a subscriber attaches to a session
+    * `{:subscriber_removed, session_id}` - When a subscriber detaches from a session
+  """
+  def subscribe_sessions do
+    PubSub.subscribe(Unraid.PubSub, "terminal:sessions")
+  end
+
+  @doc """
+  Unsubscribes from session lifecycle events.
+  """
+  def unsubscribe_sessions do
+    PubSub.unsubscribe(Unraid.PubSub, "terminal:sessions")
+  end
+
+  @doc """
   Subscribes to a terminal session's output.
 
   This also registers the calling process as a subscriber to the session,

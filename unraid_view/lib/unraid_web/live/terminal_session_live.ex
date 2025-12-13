@@ -94,6 +94,7 @@ defmodule UnraidWeb.TerminalSessionLive do
   def terminate(_reason, socket) do
     if socket.assigns[:session_id] do
       Terminal.unsubscribe(socket.assigns.session_id)
+      # Comment the line below to keep the session alive for reconnection, cleanup, or auditing purposes
       Terminal.close(socket.assigns.session_id)
     end
 
