@@ -43,4 +43,11 @@ defmodule Unraid.Application do
     UnraidWeb.Endpoint.config_change(changed, removed)
     :ok
   end
+
+  @impl true
+  def stop(_state) do
+    require Logger
+    Logger.info("[Unraid.Application] Graceful shutdown initiated")
+    :ok
+  end
 end

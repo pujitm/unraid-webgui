@@ -101,6 +101,15 @@ defmodule UnraidWeb.Layouts do
             <a href="/docker" class="btn btn-ghost btn-sm">Docker</a>
           </li>
           <li>
+            <a href="/vms" class="btn btn-ghost btn-sm">VMs</a>
+          </li>
+          <li>
+            <a href="/terminal" class="btn btn-ghost btn-sm">Terminal</a>
+          </li>
+          <li>
+            <a href="/events" class="btn btn-ghost btn-sm">Events</a>
+          </li>
+          <li>
             <.theme_toggle />
           </li>
         </ul>

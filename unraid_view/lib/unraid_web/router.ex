@@ -34,7 +34,8 @@ defmodule UnraidWeb.Router do
       live "/terminal/sessions/:session_id", TerminalSessionLive
       live "/vms", VmLive
       live "/events", EventLogLive
-      live "/log_monitor_demo", LogMonitorDemoLive
+      live "/demo/log_monitor", LogMonitorDemoLive
+      live "/demo/rich_table", RichTableDemoLive
     end
   end
 
