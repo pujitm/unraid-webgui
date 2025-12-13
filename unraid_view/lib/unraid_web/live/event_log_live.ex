@@ -30,6 +30,7 @@ defmodule UnraidWeb.EventLogLive do
       |> assign(:filters, %{source: nil, status: nil, severity: nil, search: ""})
       |> assign(:follow_mode, true)
       |> assign(:sources, [])
+      |> assign(:visible_logs, MapSet.new())
 
     if connected?(socket) do
       EventLog.subscribe()
@@ -82,6 +83,8 @@ defmodule UnraidWeb.EventLogLive do
           event={event}
           expanded={@expanded_id == event.id}
           child_events={get_child_events(@events_by_id, event.id)}
+          visible_logs={@visible_logs}
+          socket={@socket}
         />
       </div>
     </div>
@@ -100,6 +103,21 @@ defmodule UnraidWeb.EventLogLive do
       end
 
     {:noreply, assign(socket, :expanded_id, new_expanded)}
+  end
+
+  @impl true
+  def handle_event("toggle_log_attachment", %{"event-id" => event_id, "path" => path}, socket) do
+    key = {event_id, path}
+    visible_logs = socket.assigns.visible_logs
+
+    new_visible =
+      if MapSet.member?(visible_logs, key) do
+        MapSet.delete(visible_logs, key)
+      else
+        MapSet.put(visible_logs, key)
+      end
+
+    {:noreply, assign(socket, :visible_logs, new_visible)}
   end
 
   @impl true

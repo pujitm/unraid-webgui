@@ -15,6 +15,8 @@ defmodule UnraidWeb.EventLogComponents do
   attr :event, Event, required: true
   attr :expanded, :boolean, default: false
   attr :child_events, :list, default: []
+  attr :visible_logs, :any, default: MapSet.new()
+  attr :socket, :any, default: nil
 
   def event_card(assigns) do
     has_children = assigns.child_events != []
@@ -66,7 +68,7 @@ defmodule UnraidWeb.EventLogComponents do
           <.event_timeline :if={@has_children} event={@event} children={@child_events} />
 
           <%!-- Links section --%>
-          <.links_list :if={@event.links != []} links={@event.links} />
+          <.links_list :if={@event.links != []} links={@event.links} event_id={@event.id} visible_logs={@visible_logs} socket={@socket} />
 
           <%!-- Metadata section --%>
           <.metadata_display :if={@event.metadata != %{}} metadata={@event.metadata} />
@@ -358,21 +360,62 @@ defmodule UnraidWeb.EventLogComponents do
   Renders a list of links attached to an event.
   """
   attr :links, :list, required: true
+  attr :event_id, :string, required: true
+  attr :visible_logs, :any, default: MapSet.new()
+  attr :socket, :any, required: true
 
   def links_list(assigns) do
     ~H"""
-    <div class="space-y-1">
+    <div class="space-y-2">
       <p class="text-xs font-medium text-base-content/60">Attachments</p>
       <div class="flex flex-wrap gap-2">
-        <div
-          :for={link <- @links}
-          class="badge badge-outline gap-1 cursor-pointer hover:bg-base-200"
-        >
-          <.link_icon type={link.type} />
-          <span>{link.label}</span>
-          <span :if={link.tailable} class="text-xs text-success">(live)</span>
-        </div>
+        <%= for link <- @links do %>
+          <%= if link.type == :log_file do %>
+            <div
+              class={[
+                "badge badge-outline gap-1 cursor-pointer hover:bg-base-200",
+                MapSet.member?(@visible_logs, {@event_id, link.target}) && "badge-primary"
+              ]}
+              phx-click="toggle_log_attachment"
+              phx-value-event-id={@event_id}
+              phx-value-path={link.target}
+            >
+              <.link_icon type={link.type} />
+              <span>{link.label}</span>
+              <span :if={link.tailable} class="text-xs text-success">(live)</span>
+              <.icon
+                name={if MapSet.member?(@visible_logs, {@event_id, link.target}), do: "hero-chevron-up-mini", else: "hero-chevron-down-mini"}
+                class="w-3 h-3"
+              />
+            </div>
+          <% else %>
+            <div class="badge badge-outline gap-1 cursor-pointer hover:bg-base-200">
+              <.link_icon type={link.type} />
+              <span>{link.label}</span>
+            </div>
+          <% end %>
+        <% end %>
       </div>
+      <%!-- Render log viewers for log_file links (hidden when not visible) --%>
+      <%= for link <- @links, link.type == :log_file do %>
+        <div class={[
+          "mt-2 transition-all ease-out overflow-hidden",
+          if(MapSet.member?(@visible_logs, {@event_id, link.target}),
+            do: "opacity-100 max-h-[20rem] duration-300",
+            else: "opacity-0 max-h-0 duration-100"
+          )
+        ]}>
+          <%= live_render(@socket, UnraidWeb.EmbeddedLogMonitorLive,
+            id: "log-#{@event_id}-#{:erlang.phash2(link.target)}",
+            session: %{
+              "path" => link.target,
+              "label" => link.label,
+              "height" => "16rem",
+              "initial_lines" => 100
+            }
+          ) %>
+        </div>
+      <% end %>
     </div>
     """
   end
