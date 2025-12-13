@@ -9,7 +9,7 @@ fi
 
 UNRAID_SERVER="$1"
 SRC_DIR="$(dirname "$0")"
-DEST_DIR="/usr/local/unraid_view"
+DEST_DIR="/usr/local/unraid"
 REMOTE="root@${UNRAID_SERVER}"
 
 # Create parent directory on the remote server if it doesn't exist

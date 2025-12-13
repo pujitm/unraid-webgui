@@ -4,6 +4,18 @@ defmodule Unraid.Docker.Container do
 
   This struct normalizes the Docker API response into a consistent format
   for use in LiveViews and other UI components.
+
+  ## Container IDs
+
+  Docker container IDs are 64-character SHA256 hex strings. This struct stores
+  both forms:
+
+    * `id` - Short ID (12 characters). Used for display, DOM element IDs, and
+      most Docker API calls (which accept short IDs). Follows Docker CLI
+      conventions (`docker ps`, `docker logs`, etc.).
+
+    * `full_id` - Complete 64-character ID. Required for filesystem paths like
+      container log files (`/var/lib/docker/containers/<full_id>/<full_id>-json.log`).
   """
 
   alias Unraid.Parse
@@ -19,6 +31,7 @@ defmodule Unraid.Docker.Container do
 
   @type t :: %__MODULE__{
           id: String.t(),
+          full_id: String.t(),
           name: String.t(),
           image: String.t(),
           image_id: String.t(),
@@ -45,6 +58,7 @@ defmodule Unraid.Docker.Container do
 
   defstruct [
     :id,
+    :full_id,
     :name,
     :image,
     :image_id,
@@ -81,6 +95,7 @@ defmodule Unraid.Docker.Container do
 
     %__MODULE__{
       id: short_id(data."Id"),
+      full_id: data."Id",
       name: normalize_name(data."Names"),
       image: data."Image",
       image_id: short_id(data."ImageID"),
@@ -118,6 +133,7 @@ defmodule Unraid.Docker.Container do
 
     %__MODULE__{
       id: short_id(data."Id"),
+      full_id: data."Id",
       name: normalize_name(data."Name"),
       image: image,
       image_id: short_id(data."Image"),
@@ -149,6 +165,7 @@ defmodule Unraid.Docker.Container do
 
     %__MODULE__{
       id: short_id(data["Id"]),
+      full_id: data["Id"],
       name: normalize_name(data["Names"] || data["Name"]),
       image: data["Image"],
       image_id: short_id(data["ImageID"] || data["Image"]),

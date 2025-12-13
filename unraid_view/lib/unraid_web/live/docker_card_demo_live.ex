@@ -17,6 +17,7 @@ defmodule UnraidWeb.DockerCardDemoLive do
   alias Unraid.Docker
   alias Unraid.Docker.StatsServer
   alias Unraid.Docker.TailscaleService
+  alias Unraid.EventLog
   alias Unraid.Tree
 
   import UnraidWeb.CardComponents
@@ -37,9 +38,13 @@ defmodule UnraidWeb.DockerCardDemoLive do
       |> assign(:tailscale_loading, MapSet.new())
       # Console sessions: %{container_id => %{active: bool, visible: bool, session_id: sid, child_pid: pid}}
       |> assign(:console_sessions, %{})
+      # Event log cache: %{container_name => [%Event{}]}
+      |> assign(:events_cache, %{})
+      |> assign(:events_loading, MapSet.new())
 
     if connected?(socket) do
       Docker.subscribe()
+      EventLog.subscribe_source("docker")
       StatsServer.request_stats()
       send(self(), :load_containers)
     end
@@ -152,6 +157,9 @@ defmodule UnraidWeb.DockerCardDemoLive do
               tailscale_status={Map.get(@tailscale_cache, slot.row.id)}
               tailscale_loading={MapSet.member?(@tailscale_loading, slot.row.id)}
               console_session={Map.get(@console_sessions, slot.row.id)}
+              events={Map.get(@events_cache, slot.row.name, [])}
+              events_loading={MapSet.member?(@events_loading, slot.row.name)}
+              pending_action={Map.get(@pending_actions, slot.row.id)}
             />
           <% end %>
         </:row>
@@ -202,10 +210,13 @@ defmodule UnraidWeb.DockerCardDemoLive do
   attr :tailscale_status, :any, default: nil
   attr :tailscale_loading, :boolean, default: false
   attr :console_session, :map, default: nil
+  attr :events, :list, default: []
+  attr :events_loading, :boolean, default: false
+  attr :pending_action, :atom, default: nil
 
   defp container_row(assigns) do
     ~H"""
-    <.card selected={@selected}>
+    <.card selected={@selected} class={@pending_action && "opacity-60 pointer-events-none"}>
       <.card_row>
         <.expand_toggle expanded={@expanded} has_content={true} />
         <.select_checkbox selected={@selected} id={@container.id} />
@@ -218,7 +229,14 @@ defmodule UnraidWeb.DockerCardDemoLive do
             <div class="font-medium truncate flex items-center gap-2">
               {@container.name}
               <span
-                :if={@container.tailscale_enabled}
+                :if={@pending_action}
+                class="inline-flex items-center gap-1 text-sm font-normal text-base-content/60"
+              >
+                <span class="loading loading-spinner loading-xs"></span>
+                {format_pending_action(@pending_action)}
+              </span>
+              <span
+                :if={@container.tailscale_enabled && !@pending_action}
                 class="badge badge-sm badge-outline gap-1"
                 title="Tailscale enabled"
               >
@@ -273,10 +291,13 @@ defmodule UnraidWeb.DockerCardDemoLive do
       <%!-- Expanded Details --%>
       <.card_expanded :if={@expanded}>
         <.container_details
+          socket={@socket}
           container={@container}
           tailscale_status={@tailscale_status}
           tailscale_loading={@tailscale_loading}
           console_session={@console_session}
+          events={@events}
+          events_loading={@events_loading}
         />
       </.card_expanded>
 
@@ -359,10 +380,13 @@ defmodule UnraidWeb.DockerCardDemoLive do
   # Container Details (Expanded View)
   # ---------------------------------------------------------------------------
 
+  attr :socket, :any, required: true
   attr :container, :map, required: true
   attr :tailscale_status, :any, default: nil
   attr :tailscale_loading, :boolean, default: false
   attr :console_session, :map, default: nil
+  attr :events, :list, default: []
+  attr :events_loading, :boolean, default: false
 
   defp container_details(assigns) do
     ~H"""
@@ -456,6 +480,20 @@ defmodule UnraidWeb.DockerCardDemoLive do
         loading={@tailscale_loading}
       />
 
+      <%!-- Event Log Section --%>
+      <.events_section
+        container={@container}
+        events={@events}
+        loading={@events_loading}
+      />
+
+      <%!-- Logs Section --%>
+      <.logs_section
+        socket={@socket}
+        container={@container}
+        events={@events}
+      />
+
       <%!-- Console Section --%>
       <.console_section
         :if={@container.state == :running}
@@ -464,6 +502,212 @@ defmodule UnraidWeb.DockerCardDemoLive do
       />
     </div>
     """
+  end
+
+  # ---------------------------------------------------------------------------
+  # Logs Section Component
+  # ---------------------------------------------------------------------------
+
+  @docker_log_base "/var/lib/docker/containers"
+
+  attr :socket, :any, required: true
+  attr :container, :map, required: true
+  attr :events, :list, default: []
+
+  defp logs_section(assigns) do
+    # Build the main container log path
+    log_path =
+      if assigns.container.full_id do
+        Path.join([
+          @docker_log_base,
+          assigns.container.full_id,
+          "#{assigns.container.full_id}-json.log"
+        ])
+      else
+        nil
+      end
+
+    # Extract log file links from events, filtering out the main container log
+    event_logs =
+      assigns.events
+      |> extract_log_links_from_events()
+      |> Enum.reject(&(&1.target == log_path))
+
+    assigns =
+      assigns
+      |> assign(:log_path, log_path)
+      |> assign(:event_logs, event_logs)
+
+    ~H"""
+    <div>
+      <div class="flex items-center justify-between mb-3">
+        <div class="flex items-center gap-2">
+          <.icon name="hero-document-text" class="w-5 h-5 opacity-60" />
+          <span class="font-medium uppercase text-sm">Logs</span>
+          <span :if={@event_logs != []} class="badge badge-outline text-xs">
+            +{length(@event_logs)} from events
+          </span>
+        </div>
+      </div>
+
+      <%!-- Main container log --%>
+      <div :if={@log_path} class="space-y-4">
+        <div class="rounded-lg overflow-hidden border border-base-300">
+          <%= live_render(@socket, UnraidWeb.EmbeddedLogMonitorLive,
+            id: "container-log-#{@container.id}",
+            session: %{
+              "path" => @log_path,
+              "label" => "Container Output",
+              "initial_lines" => 100,
+              "height" => "16rem"
+            }
+          ) %>
+        </div>
+      </div>
+
+      <%!-- Event log attachments --%>
+      <div :if={@event_logs != []} class="mt-4 space-y-3">
+        <div class="text-sm font-medium opacity-70">Event Log Attachments</div>
+        <div :for={log <- @event_logs} class="rounded-lg overflow-hidden border border-base-300">
+          <%= live_render(@socket, UnraidWeb.EmbeddedLogMonitorLive,
+            id: "event-log-#{log.event_id}",
+            session: %{
+              "path" => log.target,
+              "label" => log.label,
+              "initial_lines" => 50,
+              "height" => "12rem"
+            }
+          ) %>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  defp extract_log_links_from_events(events) do
+    events
+    |> Enum.flat_map(fn event ->
+      (event.links || [])
+      |> Enum.filter(&(&1.type == :log_file))
+      |> Enum.map(&Map.put(&1, :event_id, event.id))
+    end)
+    |> Enum.uniq_by(& &1.target)
+  end
+
+  # ---------------------------------------------------------------------------
+  # Events Section Component
+  # ---------------------------------------------------------------------------
+
+  attr :container, :map, required: true
+  attr :events, :list, default: []
+  attr :loading, :boolean, default: false
+
+  defp events_section(assigns) do
+    ~H"""
+    <div>
+      <div class="flex items-center justify-between mb-3">
+        <div class="flex items-center gap-2">
+          <.icon name="hero-bell" class="w-5 h-5 opacity-60" />
+          <span class="font-medium uppercase text-sm">Recent Events</span>
+          <span :if={@events != []} class="badge badge-outline text-xs">
+            {length(@events)}
+          </span>
+        </div>
+        <.link navigate={~p"/events"} class="btn btn-ghost btn-xs gap-1">
+          View All <.icon name="hero-arrow-top-right-on-square" class="w-3 h-3" />
+        </.link>
+      </div>
+
+      <%!-- Loading State --%>
+      <div :if={@loading && @events == []} class="space-y-2">
+        <div :for={_ <- 1..3} class="skeleton h-12 w-full"></div>
+      </div>
+
+      <%!-- No events --%>
+      <div :if={!@loading && @events == []} class="text-sm opacity-60">
+        No recent events for this container
+      </div>
+
+      <%!-- Events list --%>
+      <div :if={@events != []} class="space-y-2">
+        <.event_card_mini :for={event <- @events} event={event} />
+      </div>
+    </div>
+    """
+  end
+
+  # ---------------------------------------------------------------------------
+  # Event Card Mini Component
+  # ---------------------------------------------------------------------------
+
+  attr :event, :map, required: true
+
+  defp event_card_mini(assigns) do
+    ~H"""
+    <div class={[
+      "flex items-center gap-3 p-2 rounded-lg bg-base-200/50 border",
+      event_border_class(@event.severity)
+    ]}>
+      <div class={["p-1.5 rounded", event_icon_bg(@event.severity)]}>
+        <.icon name={event_category_icon(@event.category)} class="w-4 h-4" />
+      </div>
+      <div class="flex-1 min-w-0">
+        <p class="text-sm truncate">{@event.summary}</p>
+        <p class="text-xs opacity-50">
+          {format_event_time(@event.timestamp)} &bull; {@event.category}
+        </p>
+      </div>
+      <.event_status_badge status={@event.status} />
+    </div>
+    """
+  end
+
+  attr :status, :atom, required: true
+
+  defp event_status_badge(assigns) do
+    ~H"""
+    <span class={["badge badge-xs", event_status_class(@status)]}>
+      {@status}
+    </span>
+    """
+  end
+
+  defp event_border_class(:error), do: "border-error/30"
+  defp event_border_class(:warning), do: "border-warning/30"
+  defp event_border_class(_), do: "border-base-300"
+
+  defp event_icon_bg(:error), do: "bg-error/10 text-error"
+  defp event_icon_bg(:warning), do: "bg-warning/10 text-warning"
+  defp event_icon_bg(:notice), do: "bg-info/10 text-info"
+  defp event_icon_bg(_), do: "bg-base-200 text-base-content/60"
+
+  defp event_category_icon("container.start"), do: "hero-play"
+  defp event_category_icon("container.stop"), do: "hero-stop"
+  defp event_category_icon("container.restart"), do: "hero-arrow-path"
+  defp event_category_icon("container.create"), do: "hero-plus"
+  defp event_category_icon("container.pause"), do: "hero-pause"
+  defp event_category_icon("container.unpause"), do: "hero-play"
+  defp event_category_icon("container.remove"), do: "hero-trash"
+  defp event_category_icon(_), do: "hero-bolt"
+
+  defp event_status_class(:completed), do: "badge-success"
+  defp event_status_class(:running), do: "badge-info"
+  defp event_status_class(:failed), do: "badge-error"
+  defp event_status_class(:pending), do: "badge-ghost"
+  defp event_status_class(_), do: "badge-ghost"
+
+  defp format_event_time(nil), do: ""
+
+  defp format_event_time(datetime) do
+    now = DateTime.utc_now()
+    diff = DateTime.diff(now, datetime, :second)
+
+    cond do
+      diff < 60 -> "#{diff}s ago"
+      diff < 3600 -> "#{div(diff, 60)}m ago"
+      diff < 86400 -> "#{div(diff, 3600)}h ago"
+      true -> Calendar.strftime(datetime, "%b %d, %H:%M")
+    end
   end
 
   # ---------------------------------------------------------------------------
@@ -885,6 +1129,44 @@ defmodule UnraidWeb.DockerCardDemoLive do
     {:noreply, close_console_session(socket, container_id)}
   end
 
+  # Handle events loaded callback
+  @impl true
+  def handle_info({:events_loaded, container_name, events}, socket) do
+    socket =
+      socket
+      |> update(:events_cache, &Map.put(&1, container_name, events))
+      |> update(:events_loading, &MapSet.delete(&1, container_name))
+
+    {:noreply, socket}
+  end
+
+  # Handle new docker events from EventLog PubSub
+  @impl true
+  def handle_info({:event_created, event}, socket) do
+    container_name = get_container_name_from_event(event)
+
+    # Only cache top-level events (no parent_id) for containers that are already expanded
+    if container_name &&
+         is_nil(event.parent_id) &&
+         Map.has_key?(socket.assigns.events_cache, container_name) do
+      {:noreply, add_event_to_cache(socket, container_name, event)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  # Handle event updates from EventLog PubSub
+  @impl true
+  def handle_info({:event_updated, event, _changes}, socket) do
+    container_name = get_container_name_from_event(event)
+
+    if container_name && Map.has_key?(socket.assigns.events_cache, container_name) do
+      {:noreply, update_event_in_cache(socket, container_name, event)}
+    else
+      {:noreply, socket}
+    end
+  end
+
   @impl true
   def handle_info(_msg, socket) do
     {:noreply, socket}
@@ -916,17 +1198,28 @@ defmodule UnraidWeb.DockerCardDemoLive do
 
     socket = assign(socket, expanded_ids: expanded_ids)
 
-    # Trigger Tailscale status loading when expanding a container with Tailscale enabled
+    # Trigger loading when expanding a container
     socket =
       if expanded do
         container = Enum.find(socket.assigns.containers, &(&1.id == id))
 
-        if container && container.tailscale_enabled && container.state == :running &&
-             !Map.has_key?(socket.assigns.tailscale_cache, id) do
-          load_tailscale_status(socket, container)
-        else
-          socket
-        end
+        socket =
+          if container && container.tailscale_enabled && container.state == :running &&
+               !Map.has_key?(socket.assigns.tailscale_cache, id) do
+            load_tailscale_status(socket, container)
+          else
+            socket
+          end
+
+        # Load events for this container if not already cached
+        socket =
+          if container && !Map.has_key?(socket.assigns.events_cache, container.name) do
+            load_container_events(socket, container.name)
+          else
+            socket
+          end
+
+        socket
       else
         socket
       end
@@ -1058,6 +1351,59 @@ defmodule UnraidWeb.DockerCardDemoLive do
   # Private Helpers
   # ---------------------------------------------------------------------------
 
+  @events_per_container 10
+
+  defp load_container_events(socket, container_name) do
+    socket = update(socket, :events_loading, &MapSet.put(&1, container_name))
+    pid = self()
+
+    Task.start(fn ->
+      # Fetch recent docker events and filter by container_name
+      # Only include top-level events (no parent_id) - child events belong to their parent's timeline
+      events =
+        EventLog.recent(source: "docker", limit: 100)
+        |> Enum.filter(fn event ->
+          is_nil(event.parent_id) && get_container_name_from_event(event) == container_name
+        end)
+        |> Enum.take(@events_per_container)
+
+      send(pid, {:events_loaded, container_name, events})
+    end)
+
+    socket
+  end
+
+  defp get_container_name_from_event(event) do
+    # Try both atom and string keys for metadata.container_name
+    case event.metadata do
+      %{container_name: name} when is_binary(name) -> name
+      %{"container_name" => name} when is_binary(name) -> name
+      _ -> nil
+    end
+  end
+
+  defp add_event_to_cache(socket, container_name, new_event) do
+    update(socket, :events_cache, fn cache ->
+      existing = Map.get(cache, container_name, [])
+      # Add new event at front, keep only recent N
+      updated = Enum.take([new_event | existing], @events_per_container)
+      Map.put(cache, container_name, updated)
+    end)
+  end
+
+  defp update_event_in_cache(socket, container_name, updated_event) do
+    update(socket, :events_cache, fn cache ->
+      existing = Map.get(cache, container_name, [])
+
+      updated =
+        Enum.map(existing, fn e ->
+          if e.id == updated_event.id, do: updated_event, else: e
+        end)
+
+      Map.put(cache, container_name, updated)
+    end)
+  end
+
   defp start_container_action(socket, id, action_type, action_fn) do
     pending = Map.put(socket.assigns.pending_actions, id, action_type)
     socket = assign(socket, :pending_actions, pending)
@@ -1089,6 +1435,13 @@ defmodule UnraidWeb.DockerCardDemoLive do
   defp format_cpu(cpu) when is_number(cpu), do: "#{Float.round(cpu * 1.0, 1)}%"
   defp format_cpu(cpu) when is_binary(cpu), do: cpu
   defp format_cpu(_), do: "—"
+
+  defp format_pending_action(:starting), do: "Starting..."
+  defp format_pending_action(:stopping), do: "Stopping..."
+  defp format_pending_action(:restarting), do: "Restarting..."
+  defp format_pending_action(:pausing), do: "Pausing..."
+  defp format_pending_action(:resuming), do: "Resuming..."
+  defp format_pending_action(_), do: "Processing..."
 
   defp format_ports(nil), do: "—"
   defp format_ports([]), do: "—"

@@ -101,10 +101,10 @@ defmodule UnraidWeb.EmbeddedLogMonitorLive do
       </div>
 
       <%!-- Error state --%>
-      <div :if={@error} class="flex-1 flex items-center justify-center">
+      <div :if={@error} class="flex-1 flex items-center justify-center p-4">
         <div class="alert alert-error max-w-md">
-          <.icon name="hero-exclamation-circle" class="w-5 h-5" />
-          <span>{@error}</span>
+          <.icon name="hero-exclamation-circle" class="w-5 h-5 shrink-0" />
+          <span class="break-all">{@error}</span>
         </div>
       </div>
 

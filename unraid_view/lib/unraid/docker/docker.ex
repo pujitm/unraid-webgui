@@ -34,6 +34,7 @@ defmodule Unraid.Docker do
 
   alias Phoenix.PubSub
   alias Unraid.Docker.{Adapter, Container, Template, TemplateAdapter, ContainerUpdater}
+  alias Unraid.EventLog
   alias Unraid.Parse
 
   @containers_topic "docker:containers"
@@ -188,9 +189,16 @@ defmodule Unraid.Docker do
   """
   def start_container(id) do
     case Adapter.start_container(id) do
-      {:ok, _} -> :ok
-      :ok -> :ok
-      {:error, reason} -> {:error, reason}
+      {:ok, _} ->
+        emit_container_event(id, "start")
+        :ok
+
+      :ok ->
+        emit_container_event(id, "start")
+        :ok
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
@@ -199,9 +207,16 @@ defmodule Unraid.Docker do
   """
   def stop_container(id, timeout \\ 10) do
     case Adapter.stop_container(id, timeout) do
-      {:ok, _} -> :ok
-      :ok -> :ok
-      {:error, reason} -> {:error, reason}
+      {:ok, _} ->
+        emit_container_event(id, "stop")
+        :ok
+
+      :ok ->
+        emit_container_event(id, "stop")
+        :ok
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
@@ -210,9 +225,16 @@ defmodule Unraid.Docker do
   """
   def restart_container(id) do
     case Adapter.restart_container(id) do
-      {:ok, _} -> :ok
-      :ok -> :ok
-      {:error, reason} -> {:error, reason}
+      {:ok, _} ->
+        emit_container_event(id, "restart")
+        :ok
+
+      :ok ->
+        emit_container_event(id, "restart")
+        :ok
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
@@ -580,4 +602,90 @@ defmodule Unraid.Docker do
 
     port_configs ++ volume_configs
   end
+
+  # ---------------------------------------------------------------------------
+  # Event Log Helpers
+  # ---------------------------------------------------------------------------
+
+  @docker_log_base "/var/lib/docker/containers"
+
+  defp emit_container_event(container_id, action) do
+    # Spawn a task to emit the event asynchronously (don't block the action)
+    Task.start(fn ->
+      case Adapter.get_container(container_id) do
+        {:ok, data} ->
+          full_id = data."Id" || data["Id"]
+          name = normalize_container_name(data."Name" || data["Name"] || data["Names"])
+          image = get_container_image(data)
+
+          {:ok, event} =
+            EventLog.emit(%{
+              source: "docker",
+              category: "container.#{action}",
+              summary: "Container '#{name}' #{action_past_tense(action)}",
+              severity: :info,
+              status: :completed,
+              metadata: %{
+                container_id: String.slice(full_id || "", 0, 12),
+                container_name: name,
+                image: image
+              }
+            })
+
+          # Add log file attachment if we have the full container ID
+          if full_id do
+            log_path = Path.join([@docker_log_base, full_id, "#{full_id}-json.log"])
+
+            EventLog.add_link(event.id, %{
+              type: :log_file,
+              label: "Container Log",
+              target: log_path,
+              tailable: action == "start"
+            })
+          end
+
+        {:error, _reason} ->
+          # Container not found (might have been removed), emit event with limited info
+          EventLog.emit(%{
+            source: "docker",
+            category: "container.#{action}",
+            summary: "Container #{action_past_tense(action)}",
+            severity: :info,
+            status: :completed,
+            metadata: %{
+              container_id: container_id
+            }
+          })
+      end
+    end)
+  end
+
+  defp normalize_container_name(nil), do: "unknown"
+  defp normalize_container_name("/" <> name), do: name
+  defp normalize_container_name([name | _]) when is_binary(name), do: normalize_container_name(name)
+  defp normalize_container_name(name) when is_binary(name), do: name
+  defp normalize_container_name(_), do: "unknown"
+
+  defp get_container_image(data) do
+    config = data."Config" || data["Config"]
+
+    cond do
+      config && (config."Image" || config["Image"]) ->
+        config."Image" || config["Image"]
+
+      data."Image" || data["Image"] ->
+        data."Image" || data["Image"]
+
+      true ->
+        "unknown"
+    end
+  end
+
+  defp action_past_tense("start"), do: "started"
+  defp action_past_tense("stop"), do: "stopped"
+  defp action_past_tense("restart"), do: "restarted"
+  defp action_past_tense("pause"), do: "paused"
+  defp action_past_tense("unpause"), do: "resumed"
+  defp action_past_tense("remove"), do: "removed"
+  defp action_past_tense(action), do: action
 end
